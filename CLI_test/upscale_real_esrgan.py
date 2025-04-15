@@ -53,9 +53,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     upscale_image(
-        input_path=args.input,
-        output_path=args.output,
-        model_path=args.model,
+        input_path='./test_asset/cross.jpg',
+        output_path='./output/result.jpg',
+        model_path='./weights/RealESRGAN_x4plus.pth',  # 올바른 위치인지 확인
         scale=args.scale,
         device=torch.device(args.device)
     )
