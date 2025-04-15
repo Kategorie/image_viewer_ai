@@ -1,3 +1,5 @@
 {
-    "python.pythonPath": ".venv/Scripts/python.exe"
+    "python.pythonPath": ".venv/Scripts/python.exe",
+    "python.terminal.activateEnvironment": true,
+    "python.formatting.blackPath": ".venv/Scripts/black.exe"
 }
