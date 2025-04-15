@@ -1,61 +1,45 @@
 import os
+import sys
+import cv2
 import argparse
-import torch
-from PIL import Image
-import numpy as np
-from torchvision.transforms.functional import to_tensor, to_pil_image
-
-# Real-ESRGAN 관련 라이브러리 불러오기 (사전 설치 필요)
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 
-def load_image(image_path):
-    return Image.open(image_path).convert("RGB")
+parser = argparse.ArgumentParser()
+parser.add_argument('--input', type=str, default='./test_asset/cross.jpg', required=True, help='입력 이미지 경로')
+parser.add_argument('--output', type=str, default='./output/output.jpg', help='출력 이미지 경로')
+parser.add_argument('--model', type=str, default='models/RealESRGAN_x4plus.pth', help='모델 파일 경로')
+args = parser.parse_args()
 
-def save_image(image_tensor, output_path):
-    image = to_pil_image(image_tensor.squeeze(0).cpu().clamp(0, 1))
-    image.save(output_path)
+if not os.path.exists(args.input):
+    print(f"[!] 입력 이미지가 존재하지 않습니다: {args.input}")
+    sys.exit(1)
 
-def build_model(scale, model_path, device):
-    # 기본 Real-ESRGAN x4 모델 구조
-    model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, 
-                    num_block=23, num_grow_ch=32, scale=scale)
+if not os.path.exists(args.model):
+    print(f"[!] 모델 파일이 존재하지 않습니다: {args.model}")
+    sys.exit(1)
 
-    upsampler = RealESRGANer(
-        scale=scale,
-        model_path=model_path,
-        model=model,
-        tile=0,  # 전체 이미지 한번에 처리 (tile 방식으로도 가능)
-        tile_pad=10,
-        pre_pad=0,
-        half=False,
-        device=device
-    )
-    return upsampler
+img = cv2.imread(args.input, cv2.IMREAD_COLOR)
+if img is None:
+    print(f"[!] 이미지를 불러올 수 없습니다 (경로 오류 또는 형식 문제): {args.input}")
+    sys.exit(1)
 
-def upscale_image(input_path, output_path, model_path, scale, device):
-    img = load_image(input_path)
-    img_np = np.array(img)
+model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
+                num_block=23, num_grow_ch=32, scale=4)
 
-    upsampler = build_model(scale, model_path, device)
-    output, _ = upsampler.enhance(img_np, outscale=scale)
+upscaler = RealESRGANer(
+    scale=4,
+    model_path=args.model,
+    model=model,
+    tile=0,
+    pre_pad=0,
+    half=False
+)
 
-    Image.fromarray(output).save(output_path)
-    print(f"[✓] Saved upscaled image to: {output_path}")
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Real-ESRGAN Upscaler")
-    parser.add_argument("--input", type=str, required=True, help="Input image path")
-    parser.add_argument("--output", type=str, required=True, help="Output image path")
-    parser.add_argument("--model", type=str, required=True, help="Path to .pth model file")
-    parser.add_argument("--scale", type=int, default=4, help="Upscaling factor")
-    parser.add_argument("--device", type=str, choices=["cpu", "cuda"], default="cpu")
-    args = parser.parse_args()
-
-    upscale_image(
-        input_path='./test_asset/cross.jpg',
-        output_path='./output/result.jpg',
-        model_path='./weights/RealESRGAN_x4plus.pth',  # 올바른 위치인지 확인
-        scale=args.scale,
-        device=torch.device(args.device)
-    )
+try:
+    output, _ = upscaler.enhance(img)
+    cv2.imwrite(args.output, output)
+    print(f"[✓] 업스케일 완료: {args.output}")
+except Exception as e:
+    print(f"[!] 업스케일 실패: {e}")
+    sys.exit(1)
