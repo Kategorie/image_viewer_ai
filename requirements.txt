@@ -1,0 +1,9 @@
+# AI 업스케일러 관련
+torch
+torchvision
+basicsr
+realesrgan
+
+# 필수 도구
+pillow
+opencv-python
