@@ -6,9 +6,9 @@ from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input', type=str, default='./test_asset/cross.jpg', required=True, help='입력 이미지 경로')
-parser.add_argument('--output', type=str, default='./output/output.jpg', help='출력 이미지 경로')
-parser.add_argument('--model', type=str, default='./weights/RealESRGAN_x4plus.pth', help='모델 파일 경로')
+parser.add_argument('--input', type=str, default='./CLI_test/test_asset/cross.jpg', help='입력 이미지 경로')
+parser.add_argument('--output', type=str, default='./CLI_test/output/output.jpg', help='출력 이미지 경로')
+parser.add_argument('--model', type=str, default='./CLI_test/weights/RealESRNet_x4plus.pth', help='모델 파일 경로')
 args = parser.parse_args()
 
 if not os.path.exists(args.input):
