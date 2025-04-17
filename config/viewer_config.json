@@ -1,1 +1,5 @@
-{"fit_to_window": true, "scale_factor": 1.0}
+{
+    "fit_to_window": true,
+    "scale_factor": 1.0,
+    "enable_thumbnails": false
+  }

@@ -46,9 +46,11 @@ class ImageViewer(QMainWindow):
         self.current_gif_index = 0
 
         os.makedirs(CACHE_DIR, exist_ok=True)
+        
+        self.config = {}
+        self.load_settings()
         self.create_menu()
         self.create_shortcuts()
-        self.load_settings()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key_Escape:
@@ -125,31 +127,35 @@ class ImageViewer(QMainWindow):
         
     def load_settings(self):
         if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, 'r') as f:
-                data = json.load(f)
-                self.fit_to_window = data.get("fit_to_window", True)
-                self.scale_factor = 1.0 if self.fit_to_window else data.get("scale_factor", 1.0)
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                self.config = json.load(f)
+        else:
+            self.config = {
+                "fit_to_window": True,
+                "scale_factor": 1.0,
+                "enable_thumbnails": True,
+                "tile": 128,
+                "scale": 4,
+                "model_path": "src/models/RealESRNET_x4plus.pth",
+                "half": False
+            }
+            self.save_settings()
 
     def save_settings(self):
-        os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
-        with open(CONFIG_PATH, 'w') as f:
-            json.dump({
-                "fit_to_window": self.fit_to_window,
-                "scale_factor": self.scale_factor
-            }, f)
+        with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+            json.dump(self.config, f, indent=4, ensure_ascii=False)
 
     def init_upscaler(self):
         model_path = "src/models/RealESRNET_x4plus.pth"
         model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                         num_block=23, num_grow_ch=32, scale=4)
         return RealESRGANer(
-            scale=self.config.get("scale", 4),
-            model_path=self.config.get("model_path", "src/models/RealESRNET_x4plus.pth"),
+            scale=4,
+            model_path=model_path,
             model=model,
-            tile=self.config.get("tile", 128),  # ⬅️ tile 사용
-            tile_pad=4,
-            pre_pad=0,
-            half=self.config.get("half", False)
+            tile=128,
+            pre_pad=4,
+            half=False,
         )
 
     def get_cache_path(self, path):
@@ -209,6 +215,33 @@ class ImageViewer(QMainWindow):
             scaled = pixmap.scaled(pixmap.size() * self.scale_factor, Qt.KeepAspectRatio)
 
         self.image_label.setPixmap(scaled)
+        self.save_settings()
+
+    def open_file_dialog(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            "이미지 파일 열기",
+            "",
+            "이미지 파일 (*.png *.jpg *.jpeg *.bmp *.gif)"
+        )
+        if path:
+            self.open_image(path)
+
+    def set_config_option(self, key, options):
+        val, ok = QInputDialog.getItem(self, f"{key} 설정", f"{key} 선택:", [str(o) for o in options], editable=False)
+        if ok:
+            self.config[key] = int(val)
+            self.save_settings()
+            QMessageBox.information(self, "설정 적용됨", f"{key} 값이 {val}로 설정되었습니다.\n프로그램을 재시작하세요.")
+        def process_upscale(self, img_path, save_path):
+            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if img is None:
+                return
+            output, _ = self.upscaler.enhance(img)
+            cv2.imwrite(save_path, output)
+
+    def toggle_thumbnail(self, checked):
+        self.config["enable_thumbnails"] = checked
         self.save_settings()
 
     def create_menu(self):
@@ -275,19 +308,6 @@ class ImageViewer(QMainWindow):
             cache_path = self.get_cache_path(path)
             if not os.path.exists(cache_path):
                 threading.Thread(target=self.process_upscale, args=(path, cache_path), daemon=True).start()
-    
-    def set_config_option(self, key, options):
-        val, ok = QInputDialog.getItem(self, f"{key} 설정", f"{key} 선택:", [str(o) for o in options], editable=False)
-        if ok:
-            self.config[key] = int(val)
-            self.save_settings()
-            QMessageBox.information(self, "설정 적용됨", f"{key} 값이 {val}로 설정되었습니다.\n프로그램을 재시작하세요.")
-        def process_upscale(self, img_path, save_path):
-            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
-            if img is None:
-                return
-            output, _ = self.upscaler.enhance(img)
-            cv2.imwrite(save_path, output)
 
     def open_image(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "이미지 열기", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
