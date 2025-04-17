@@ -3,11 +3,13 @@ import os
 import json
 import mimetypes
 import hashlib
+import threading
+
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QLabel, QFileDialog, QVBoxLayout,
-    QWidget, QPushButton, QHBoxLayout, QMenu, QToolBar, QMessageBox
+    QWidget, QPushButton, QHBoxLayout, QMenu, QToolBar, QMessageBox, QDialog, QListWidget, QListWidgetItem, QCheckBox, QInputDialog, QFileDialog
 )
-from PySide6.QtGui import QPixmap, QImage, QAction, QKeySequence, QContextMenuEvent, QTransform, QDragEnterEvent, QDropEvent
+from PySide6.QtGui import QPixmap, QImage, QAction, QKeySequence, QContextMenuEvent, QTransform, QDragEnterEvent, QDropEvent, QIcon
 from PySide6.QtCore import Qt, QSize, QTimer
 import cv2
 import numpy as np
@@ -16,7 +18,6 @@ from realesrgan import RealESRGANer
 
 CONFIG_PATH = "config/viewer_config.json"
 CACHE_DIR = "src/cache"
-
 class ImageViewer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -49,6 +50,79 @@ class ImageViewer(QMainWindow):
         self.create_shortcuts()
         self.load_settings()
 
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Escape:
+            self.close()  # ⎋ 종료
+        elif event.key() in [Qt.Key_Left, Qt.Key_Up]:
+            self.load_previous_image()
+        elif event.key() in [Qt.Key_Right, Qt.Key_Down]:
+            self.load_next_image()
+        elif event.key() == Qt.Key_Return and self.current_image_path:
+            self.show_image_list_dialog()
+
+    def show_image_list_dialog(self):
+        folder = os.path.dirname(self.current_image_path)
+        image_files = sorted([
+            f for f in os.listdir(folder)
+            if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".gif"))
+        ])
+        current_file = os.path.basename(self.current_image_path)
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("이미지 선택")
+        layout = QVBoxLayout(dialog)
+
+        thumb_cache_dir = os.path.join("src/cache", "thumbnails")
+        os.makedirs(thumb_cache_dir, exist_ok=True)
+
+        # 썸네일 보기 체크박스
+        checkbox = QCheckBox("썸네일 보기", dialog)
+        checkbox.setChecked(self.config.get("enable_thumbnails", True))
+        layout.addWidget(checkbox)
+
+        list_widget = QListWidget(dialog)
+        list_widget.setIconSize(QSize(100, 100))
+
+        SHOW_THUMBNAIL = checkbox.isChecked() and len(image_files) <= 100
+
+        for f in image_files:
+            item = QListWidgetItem(f)
+            image_path = os.path.join(folder, f)
+            if SHOW_THUMBNAIL:
+                hash_name = hashlib.md5(image_path.encode()).hexdigest() + ".png"
+                thumb_path = os.path.join(thumb_cache_dir, hash_name)
+                if os.path.exists(thumb_path):
+                    pixmap = QPixmap(thumb_path)
+                else:
+                    pixmap = QPixmap(image_path).scaled(100, 100, Qt.KeepAspectRatio, Qt.SmoothTransformation)
+                    pixmap.save(thumb_path)
+                item.setIcon(QIcon(pixmap))
+            list_widget.addItem(item)
+
+        current_row = image_files.index(current_file)
+        list_widget.setCurrentRow(current_row)
+
+        def load_selected():
+            selected = list_widget.currentItem()
+            if selected:
+                full_path = os.path.join(folder, selected.text())
+                self.open_image(full_path)
+                dialog.accept()
+
+        def keyPressEvent_inner(event):
+            if event.key() == Qt.Key_Return:
+                load_selected()
+        list_widget.keyPressEvent = keyPressEvent_inner
+
+        layout.addWidget(list_widget)
+        dialog.setLayout(layout)
+        dialog.resize(520, 450)
+        dialog.exec()
+
+        # 저장된 체크박스 상태 반영
+        self.config["enable_thumbnails"] = checkbox.isChecked()
+        self.save_settings()
+        
     def load_settings(self):
         if os.path.exists(CONFIG_PATH):
             with open(CONFIG_PATH, 'r') as f:
@@ -69,12 +143,13 @@ class ImageViewer(QMainWindow):
         model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                         num_block=23, num_grow_ch=32, scale=4)
         return RealESRGANer(
-            scale=4,
-            model_path=model_path,
+            scale=self.config.get("scale", 4),
+            model_path=self.config.get("model_path", "src/models/RealESRNET_x4plus.pth"),
             model=model,
-            tile=0,
+            tile=self.config.get("tile", 128),  # ⬅️ tile 사용
+            tile_pad=4,
             pre_pad=0,
-            half=False
+            half=self.config.get("half", False)
         )
 
     def get_cache_path(self, path):
@@ -137,48 +212,35 @@ class ImageViewer(QMainWindow):
         self.save_settings()
 
     def create_menu(self):
-        menubar = self.menuBar()
-        file_menu = menubar.addMenu("파일")
+        menu_bar = self.menuBar()
+        file_menu = menu_bar.addMenu("파일")
+        view_menu = menu_bar.addMenu("보기")
+        settings_menu = menu_bar.addMenu("설정")
 
-        open_action = QAction("이미지 열기", self)
-        open_action.triggered.connect(self.open_image)
+        open_action = QAction("열기", self)
+        open_action.triggered.connect(self.open_file_dialog)
         file_menu.addAction(open_action)
 
-        upscale_action = QAction("업스케일 적용", self)
-        upscale_action.triggered.connect(self.toggle_upscale)
-        file_menu.addAction(upscale_action)
+        upscale_toggle = QAction("업스케일 사용", self, checkable=True)
+        upscale_toggle.setChecked(self.upscale_enabled)
+        upscale_toggle.triggered.connect(self.toggle_upscale)
+        view_menu.addAction(upscale_toggle)
 
-        save_action = QAction("이미지 저장", self)
-        save_action.triggered.connect(self.save_image)
-        file_menu.addAction(save_action)
+        thumbnail_toggle = QAction("썸네일 보기", self, checkable=True)
+        thumbnail_toggle.setChecked(self.config.get("enable_thumbnails", True))
+        thumbnail_toggle.triggered.connect(self.toggle_thumbnail)
+        view_menu.addAction(thumbnail_toggle)
 
-        info_action = QAction("이미지 정보", self)
-        info_action.triggered.connect(self.show_image_info)
-        file_menu.addAction(info_action)
+        tile_action = QAction("Tile 크기 (64/128/256)", self)
+        tile_action.triggered.connect(lambda: self.set_config_option("tile", [64, 128, 256]))
+        scale_action = QAction("Scale 배율 (2/4)", self)
+        scale_action.triggered.connect(lambda: self.set_config_option("scale", [2, 4]))
+        model_action = QAction("모델 변경", self)
+        model_action.triggered.connect(self.select_model_file)
 
-        view_menu = menubar.addMenu("보기")
-
-        self.fit_action = QAction("화면 맞춤", self, checkable=True)
-        self.fit_action.setChecked(self.fit_to_window)
-        self.fit_action.triggered.connect(self.set_fit_to_window)
-        view_menu.addAction(self.fit_action)
-
-        self.original_action = QAction("원래 크기", self, checkable=True)
-        self.original_action.setChecked(not self.fit_to_window)
-        self.original_action.triggered.connect(self.set_original_size)
-        view_menu.addAction(self.original_action)
-
-        rotate_action = QAction("시계 방향 회전", self)
-        rotate_action.triggered.connect(self.rotate_image)
-        view_menu.addAction(rotate_action)
-
-        flip_h_action = QAction("좌우 반전", self)
-        flip_h_action.triggered.connect(self.flip_horizontal_image)
-        view_menu.addAction(flip_h_action)
-
-        flip_v_action = QAction("상하 반전", self)
-        flip_v_action.triggered.connect(self.flip_vertical_image)
-        view_menu.addAction(flip_v_action)
+        settings_menu.addAction(tile_action)
+        settings_menu.addAction(scale_action)
+        settings_menu.addAction(model_action)
 
     def create_shortcuts(self):
         next_action = QAction(self)
@@ -191,10 +253,41 @@ class ImageViewer(QMainWindow):
         prev_action.triggered.connect(self.load_previous_image)
         self.addAction(prev_action)
 
+    def update_window_title(self):
+        if not self.current_image_path:
+            self.setWindowTitle("AI Image Viewer")
+            return
+            
+        folder_name = os.path.basename(os.path.dirname(self.current_image_path))
+        file_name = os.path.basename(self.current_image_path)
+        total = len(self.image_list)
+        index = self.current_index + 1 if self.current_index >= 0 else "?"
+        self.setWindowTitle(f"[{index}/{total}] {file_name} - {folder_name}")
+
     def toggle_upscale(self):
         self.upscale_enabled = not self.upscale_enabled
         if self.current_image_path:
             self.display_image(self.current_image_path)
+
+    def preload_upscaled_image(self, index):
+        if 0 <= index < len(self.image_list):
+            path = self.image_list[index]
+            cache_path = self.get_cache_path(path)
+            if not os.path.exists(cache_path):
+                threading.Thread(target=self.process_upscale, args=(path, cache_path), daemon=True).start()
+    
+    def set_config_option(self, key, options):
+        val, ok = QInputDialog.getItem(self, f"{key} 설정", f"{key} 선택:", [str(o) for o in options], editable=False)
+        if ok:
+            self.config[key] = int(val)
+            self.save_settings()
+            QMessageBox.information(self, "설정 적용됨", f"{key} 값이 {val}로 설정되었습니다.\n프로그램을 재시작하세요.")
+        def process_upscale(self, img_path, save_path):
+            img = cv2.imread(img_path, cv2.IMREAD_COLOR)
+            if img is None:
+                return
+            output, _ = self.upscaler.enhance(img)
+            cv2.imwrite(save_path, output)
 
     def open_image(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "이미지 열기", "", "Image Files (*.png *.jpg *.jpeg *.bmp *.gif)")
@@ -229,6 +322,13 @@ class ImageViewer(QMainWindow):
                 f"유형: {mime_type or '알 수 없음'}"
             )
             QMessageBox.information(self, "이미지 정보", text)
+    
+    def select_model_file(self):
+        path, _ = QFileDialog.getOpenFileName(self, "모델 선택", "src/models", "Model Files (*.pth)")
+        if path:
+            self.config["model_path"] = path
+            self.save_settings()
+            QMessageBox.information(self, "모델 선택됨", f"{os.path.basename(path)} 모델이 설정되었습니다.\n프로그램을 재시작하세요.")
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
@@ -236,6 +336,7 @@ class ImageViewer(QMainWindow):
             self.display_image(self.current_image_path)
 
     def wheelEvent(self, event):
+        # ✨ 통합됨: Ctrl+휠 → 확대/축소, 일반 휠 → 이미지 탐색
         modifiers = QApplication.keyboardModifiers()
         if modifiers == Qt.ControlModifier:
             delta = event.angleDelta().y()
@@ -264,10 +365,10 @@ class ImageViewer(QMainWindow):
             return
 
         self.current_gif_index = 0
-        interval = max(20, int(1000 / len(self.gif_frames)))  # 최소 20ms 보장
+        interval = max(20, int(1000 / len(self.gif_frames)))  # 프레임 수 기반 속도
         self.anim_timer.timeout.disconnect()
         self.anim_timer.timeout.connect(self.update_gif_frame)
-        self.anim_timer.start(interval)  # 프레임 수에 비례한 속도
+        self.anim_timer.start(interval)
 
     def update_gif_frame(self):
         frame = self.gif_frames[self.current_gif_index]
@@ -345,14 +446,6 @@ class ImageViewer(QMainWindow):
         self.fit_action.setChecked(False)
         if self.current_image_path:
             self.display_image(self.current_image_path)
-
-    def wheelEvent(self, event):
-        if not self.fit_to_window:
-            delta = event.angleDelta().y()
-            factor = 1.1 if delta > 0 else 0.9
-            self.scale_factor *= factor
-            if self.current_image_path:
-                self.display_image(self.current_image_path)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
