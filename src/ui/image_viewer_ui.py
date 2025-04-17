@@ -16,6 +16,10 @@ import numpy as np
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 
+from core.config_manager import load_config, save_config
+from core.upscaler import create_upscaler
+from core.image_utils import get_cache_path, is_image_file
+
 CONFIG_PATH = "config/viewer_config.json"
 CACHE_DIR = "src/cache"
 class ImageViewer(QMainWindow):
@@ -30,6 +34,8 @@ class ImageViewer(QMainWindow):
 
         self.setAcceptDrops(True)
 
+        self.config = {}
+
         self.current_image_path = None
         self.upscale_enabled = False
         self.fit_to_window = True
@@ -37,7 +43,7 @@ class ImageViewer(QMainWindow):
         self.rotation_angle = 0
         self.flip_horizontal = False
         self.flip_vertical = False
-        self.model = self.init_upscaler()
+        self.upscaler = self.init_upscaler()
 
         self.image_list = []
         self.current_index = -1
@@ -47,7 +53,7 @@ class ImageViewer(QMainWindow):
 
         os.makedirs(CACHE_DIR, exist_ok=True)
         
-        self.config = {}
+        
         self.load_settings()
         self.create_menu()
         self.create_shortcuts()
@@ -146,16 +152,22 @@ class ImageViewer(QMainWindow):
             json.dump(self.config, f, indent=4, ensure_ascii=False)
 
     def init_upscaler(self):
-        model_path = "src/models/RealESRNET_x4plus.pth"
+        return self._build_upscaler()
+
+    def recreate_upscaler(self):
+        self.upscaler = self._build_upscaler()
+
+    def _build_upscaler(self):
         model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
                         num_block=23, num_grow_ch=32, scale=4)
         return RealESRGANer(
-            scale=4,
-            model_path=model_path,
+            scale=self.config.get("scale", 4),
+            model_path=self.config.get("model_path", "src/models/RealESRNET_x4plus.pth"),
             model=model,
-            tile=128,
-            pre_pad=4,
-            half=False,
+            tile=self.config.get("tile", 128),
+            tile_pad=4,
+            pre_pad=0,
+            half=self.config.get("half", False)
         )
 
     def get_cache_path(self, path):
@@ -185,7 +197,7 @@ class ImageViewer(QMainWindow):
         else:
             img = cv2.imread(path)
             if self.upscale_enabled:
-                img, _ = self.model.enhance(img)
+                img, _ = self.upscaler.enhance(img)
                 self.save_to_cache(path, img)
 
         if self.flip_horizontal:
@@ -225,6 +237,13 @@ class ImageViewer(QMainWindow):
             "이미지 파일 (*.png *.jpg *.jpeg *.bmp *.gif)"
         )
         if path:
+            folder = os.path.dirname(path)
+            image_files = sorted([
+                os.path.join(folder, f) for f in os.listdir(folder)
+                if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".gif"))
+            ])
+            self.image_list = image_files
+            self.current_index = image_files.index(path)
             self.open_image(path)
 
     def set_config_option(self, key, options):
@@ -243,6 +262,7 @@ class ImageViewer(QMainWindow):
     def toggle_thumbnail(self, checked):
         self.config["enable_thumbnails"] = checked
         self.save_settings()
+        QMessageBox.information(self, "설정 적용", "썸네일 보기 설정이 변경되었습니다.")
 
     def create_menu(self):
         menu_bar = self.menuBar()
