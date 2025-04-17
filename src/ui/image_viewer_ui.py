@@ -74,6 +74,7 @@ class ImageViewer(QMainWindow):
         self.scale_factor = self.config.get("scale_factor", 1.0)
         self.fit_to_window = self.config.get("fit_to_window", True)
         self.enable_thumbnails = self.config.get("enable_thumbnails", True)
+        self.enabled_upscale = self.config.get("enabled_upscale", False)  # 업스케일링 ON/OFF 토글 상태
 
         self.gif_timer = QTimer()
         self.gif_frames = []
@@ -141,11 +142,27 @@ class ImageViewer(QMainWindow):
         page_mode_group.addAction(double_action)
         view_menu.addAction(double_action)
 
+        tools_menu = menu_bar.addMenu("도구")
+        self.upscale_toggle = QAction("업스케일 사용", self, checkable=True)
+        self.upscale_toggle.setChecked(self.enabled_upscale)
+        self.upscale_toggle.triggered.connect(self.toggle_upscale)
+        tools_menu.addAction(self.upscale_toggle)
+
+        thumbnail_dialog_action = QAction("썸네일 보기", self)
+        thumbnail_dialog_action.triggered.connect(self.open_thumbnail_dialog)
+        tools_menu.addAction(thumbnail_dialog_action)
+
     # 페이지 보기 적용 함수
     def set_page_mode(self, mode):
         self.config["page_mode"] = mode
         save_config(self.config)
         self.refresh_image()
+
+    def toggle_upscale(self):
+        self.upscale_enabled = not self.upscale_enabled
+        self.upscale_toggle.setChecked(self.upscale_enabled)
+        self.config["enabled_upscale"] = self.upscale_enabled
+        save_config(self.config)  # config/viewer_config.json 에 반영하려면
 
     def toggle_fit_to_window(self, checked):
         self.fit_to_window = checked
@@ -238,18 +255,49 @@ class ImageViewer(QMainWindow):
             self.display_image(img)
         self.update_title()
 
-    def update_gif_frame_pil(self):
+    def play_gif(self, path):
+        import imageio.v3 as iio
+        self.gif_frames = []
+        self.gif_durations = []
+
+        try:
+            for frame in iio.imiter(path, plugin="pillow", mode="RGB"):
+                img = frame
+                self.gif_frames.append(img)
+                self.gif_durations.append(100)  # fallback (수정됨 아래에서 진짜 duration 추출)
+            
+            meta = iio.immeta(path, plugin="pillow")
+            duration = meta.get("duration", 100)
+            self.gif_durations = [duration for _ in self.gif_frames]
+        except Exception as e:
+            print("[GIF 오류]", e)
+            return
+
+        self.current_gif_index = 0
         if not self.gif_frames:
             return
-        pixmap = self.gif_frames[self.gif_index]
-        if self.fit_to_window:
-            pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio)
-        else:
-            pixmap = pixmap.scaled(pixmap.size() * self.scale_factor, Qt.KeepAspectRatio)
 
-        self.image_label.setPixmap(pixmap)
-        self.gif_index = (self.gif_index + 1) % len(self.gif_frames)
-        self.gif_timer.start(self.gif_delays[self.gif_index])
+        self.anim_timer.timeout.disconnect()
+        self.anim_timer.timeout.connect(self.update_gif_frame)
+        self.anim_timer.start(self.gif_durations[0])
+
+    def update_gif_frame(self):
+        frame = self.gif_frames[self.current_gif_index]
+        h, w, ch = frame.shape
+        bytes_per_line = ch * w
+        qt_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qt_image)
+
+        if self.fit_to_window:
+            scaled = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio)
+        else:
+            scaled = pixmap.scaled(pixmap.size() * self.scale_factor, Qt.KeepAspectRatio)
+
+        self.image_label.setPixmap(scaled)
+        self.current_gif_index = (self.current_gif_index + 1) % len(self.gif_frames)
+
+        next_interval = self.gif_durations[self.current_gif_index]
+        self.anim_timer.start(next_interval)
 
     def display_image(self, img):
         if img is None:
@@ -279,9 +327,11 @@ class ImageViewer(QMainWindow):
             self.load_previous_image()
         elif event.key() == Qt.Key_Escape:
             self.close()
-        elif event.key() == Qt.Key_Return:
-            # 썸네일 보기 옵션과 관계없이 항상 열림
-            self.open_thumbnail_dialog(force=True)
+        elif event.key() == Qt.Key_Return and self.current_image_path:
+            abs_list = [os.path.abspath(p) for p in self.image_list]
+            current = os.path.abspath(self.current_image_path)
+            if current in abs_list:
+                self.open_thumbnail_dialog()
     
     def open_thumbnail_dialog(self, force=False):
         if not self.enable_thumbnails and not force:
