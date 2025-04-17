@@ -6,5 +6,4 @@
     "scale": 4,
     "model_path": "src/models/RealESRNET_x4plus.pth",
     "half": false
-  }
-  
+}

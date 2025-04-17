@@ -1,4 +1,3 @@
-import os
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 
