@@ -1,7 +1,7 @@
 {
     "fit_to_window": true,
     "scale_factor": 1.0,
-    "enable_thumbnails": true,
+    "enable_thumbnails": false,
     "tile": 128,
     "scale": 4,
     "model_path": "src/models/RealESRNET_x4plus.pth",

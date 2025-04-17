@@ -141,11 +141,11 @@ class ImageViewer(QMainWindow):
         page_mode_group.addAction(double_action)
         view_menu.addAction(double_action)
 
-        # 페이지 보기 적용 함수
-        def set_page_mode(self, mode):
-            self.config["page_mode"] = mode
-            save_config(self.config)
-            self.refresh_image()
+    # 페이지 보기 적용 함수
+    def set_page_mode(self, mode):
+        self.config["page_mode"] = mode
+        save_config(self.config)
+        self.refresh_image()
 
     def toggle_fit_to_window(self, checked):
         self.fit_to_window = checked
@@ -165,18 +165,22 @@ class ImageViewer(QMainWindow):
 
     def open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(
-            self, "이미지/압축 파일 열기", "", "Images/Archives (*.png *.jpg *.jpeg *.bmp *.gif *.zip *.cbz)"
+            self,
+            "이미지/압축 파일 열기",
+            "",
+            "Images/Archives (*.png *.jpg *.jpeg *.bmp *.gif *.zip *.cbz)"
         )
         if not file_path:
             return
 
+        file_path = os.path.abspath(file_path)
         ext = os.path.splitext(file_path)[1].lower()
 
         if ext in [".zip", ".cbz"]:
             try:
                 self.image_list = extract_archive(file_path)
                 if not self.image_list:
-                    QMessageBox.information(self, "알림", "이미지가 없습니다.")
+                    QMessageBox.information(self, "알림", "압축 파일 내에 이미지가 없습니다.")
                     return
                 self.current_index = 0
                 self.open_image(self.image_list[0])
@@ -184,20 +188,19 @@ class ImageViewer(QMainWindow):
                 QMessageBox.critical(self, "압축 해제 오류", str(e))
             return
 
+        # 일반 이미지 파일 처리
         folder = os.path.dirname(file_path)
         self.image_list = sorted([
-            os.path.join(folder, f)
+            os.path.abspath(os.path.join(folder, f))
             for f in os.listdir(folder)
-            if is_image_file(f)
+            if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".gif"))
         ])
 
-        try:
+        if file_path in self.image_list:
             self.current_index = self.image_list.index(file_path)
-        except ValueError:
+            self.open_image(file_path)
+        else:
             QMessageBox.warning(self, "경고", "이미지가 현재 폴더 내에 없습니다.")
-            return
-
-        self.open_image(self.image_list[self.current_index])       
             
     def extract_archive(self, archive_path):
         self.archive_tempdir = tempfile.TemporaryDirectory()
@@ -300,6 +303,9 @@ class ImageViewer(QMainWindow):
         for idx, path in enumerate(self.image_list):
             item = QListWidgetItem()
             img = cv2.imread(path)
+            if img is None:
+                continue  # 잘못된 이미지 패스
+            
             if img is not None:
                 img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
                 h, w, ch = img.shape
