@@ -26,16 +26,22 @@ Real-ESRGAN or waifu2x (PyTorch 기반)
 # 파일 구조
 
 image_viewer_ai/
-├── main.py              # 진입점
-├── ui/                  # UI 관련 코드 (PyQt/PySide)
-│   └── viewer.py
-├── core/                # 이미지 처리, 업스케일 등
-│   ├── loader.py
-│   ├── animator.py
-│   └── upscaler.py
-├── models/              # AI 모델 로딩 및 관리
-├── assets/              # 아이콘 등 리소스
-└── config.py            # 환경 설정
+├── main.py                     ← 앱 실행 진입점
+├── config/
+│   └── settings.json           ← 사용자 설정 (화면맞춤, 원본크기 등)
+│
+├── src/
+│   ├── ui/
+│   │   └── viewer_window.py    ← QMainWindow, 메뉴/뷰/상태
+│   │
+│   ├── core/
+│   │   ├── image_handler.py    ← 이미지 로딩, 업스케일, 확대/축소
+│   │   └── settings_manager.py ← JSON 설정 불러오기/저장
+│   │
+│   ├── models/
+│   │   └── RealESRNET_x4plus.pth
+│   │
+│   └── assets/                 ← UI 아이콘, 폰트 등 리소스
 
 --------------------------------------------------------------------------------------------------------
 

@@ -1,3 +1,9 @@
+"""
+RRDBNet 기반의 Real-ESRGAN을 사용하여 이미지를 업스케일하는 CLI 스크립트입니다.
+이 스크립트는 사용자가 지정한 입력 이미지와 모델 파일을 사용하여 업스케일된 이미지를 생성합니다.
+정상 작동합니다.
+"""
+
 import os
 import sys
 import cv2
@@ -6,9 +12,14 @@ from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--input', type=str, default='./CLI_test/test_asset/cross.jpg', help='입력 이미지 경로')
+parser.add_argument('--input', type=str, default='./CLI_test/test_asset/cross_0.jpg', help='입력 이미지 경로')
 parser.add_argument('--output', type=str, default='./CLI_test/output/output.jpg', help='출력 이미지 경로')
 parser.add_argument('--model', type=str, default='./CLI_test/weights/RealESRNet_x4plus.pth', help='모델 파일 경로')
+parser.add_argument('--tile', type=int, default=0, help='타일 크기 (0이면 전체 이미지 처리)')
+parser.add_argument('--pre_pad', type=int, default=0, help='패딩 크기 (0이면 패딩 없음)')
+parser.add_argument('--device', type=str, default='cpu', help='장치 (cpu 또는 cuda)')
+parser.add_argument('--scale', type=int, default=4, help='업스케일 배율 (기본값: 4)')
+
 args = parser.parse_args()
 
 if not os.path.exists(args.input):

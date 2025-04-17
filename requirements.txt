@@ -1,8 +1,8 @@
 # AI 업스케일러 관련
 torch
-torchvision
-basicsr
-realesrgan
+torchvision 
+basicsr     # 1.4.2 이하 사용 권장
+realesrgan  # python 3.11.1 이하 사용 권장 (3.11.2 이상은 torch 2.0.0과 호환되지 않음)
 
 # 필수 도구
 pillow
