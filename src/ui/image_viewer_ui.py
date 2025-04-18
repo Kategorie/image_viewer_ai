@@ -4,6 +4,10 @@ import zipfile
 import tempfile
 import hashlib
 import numpy as np
+try:
+    import imageio.v3 as iio
+except ImportError:
+    iio = None
 from PIL import Image, ImageSequence
 
 from PySide6.QtWidgets import (
@@ -15,7 +19,7 @@ from PySide6.QtCore import Qt, QSize, QTimer
 
 from core.config_manager import ConfigManager
 from core.upscaler import create_upscaler
-from core.image_utils import is_image_file, extract_archive
+from core.image_utils import is_image_file, extract_archive, get_file_extension
 
 class SettingDialog(QDialog):
     def __init__(self, config, parent=None):
@@ -263,11 +267,11 @@ class ImageViewer(QMainWindow):
     def display_image(self, path):
         """
         실제 이미지를 화면에 표시하는 핵심 처리 함수.
-        - 업스케일링
+        - 업스케일링 (GIF 제외)
         - 회전, 반전
         - gif 여부에 따른 분기
         """
-        # 이미지 전환 시 GIF 재생 정리
+        # GIF 재생 중지
         if self.anim_timer.isActive():
             self.anim_timer.stop()
         try:
@@ -279,7 +283,8 @@ class ImageViewer(QMainWindow):
             QMessageBox.warning(self, "경고", "이미지를 찾을 수 없습니다.")
             return
 
-        if path.lower().endswith(".gif"):
+        ext = get_file_extension(path)
+        if ext == ".gif":
             self.play_gif(path)
             return
 
@@ -299,7 +304,7 @@ class ImageViewer(QMainWindow):
         if self.flip_vertical:
             img = cv2.flip(img, 0)
 
-        # 업스케일 적용
+        # 업스케일 적용 (GIF는 제외)
         if self.upscale_enabled and self.upscaler:
             try:
                 cache_path = self.get_cached_path(path)
@@ -338,7 +343,10 @@ class ImageViewer(QMainWindow):
         """
         gif 이미지 재생을 처리하는 함수 (프레임 기반 애니메이션)
         """
-        import imageio.v3 as iio
+        if iio is None:
+            QMessageBox.warning(self, "라이브러리 누락", "GIF 재생을 위해 imageio가 필요합니다.")
+            return
+        
         self.gif_frames = []
         self.gif_durations = []
 

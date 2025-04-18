@@ -44,3 +44,6 @@ def extract_archive(archive_path, image_extensions=None):
     ])
 
     return image_list
+
+def get_file_extension(path):
+    return os.path.splitext(path)[1].lower()
