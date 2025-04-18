@@ -2,6 +2,8 @@ import os
 import cv2
 import zipfile
 import tempfile
+import hashlib
+import numpy as np
 from PIL import Image, ImageSequence
 
 from PySide6.QtWidgets import (
@@ -11,7 +13,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtGui import QPixmap, QImage, QAction, QKeyEvent, QWheelEvent, QContextMenuEvent, QActionGroup
 from PySide6.QtCore import Qt, QSize, QTimer
 
-from core.config_manager import load_config, save_config, DEFAULT_CONFIG
+from core.config_manager import ConfigManager
 from core.upscaler import create_upscaler
 from core.image_utils import is_image_file, extract_archive
 
@@ -61,20 +63,29 @@ class ImageViewer(QMainWindow):
         self.setWindowTitle("AI Image Viewer")
         self.setGeometry(100, 100, 1000, 700)
 
-        self.config = load_config()
-        self.upscaler = create_upscaler(self.config)
-
+        self.config_manager = ConfigManager()
+        self.upscaler = create_upscaler(self.config_manager)
+        
+        # 위젯 정의
         self.image_label = QLabel("이미지를 불러오세요", self)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.setCentralWidget(self.image_label)
 
+        # 상태 변수 초기화 블록
+        self.rotation_angle = 0  # ← 이미지 회전 각도 저장
+        self.flip_horizontal = False
+        self.flip_vertical = False
+        self.upscale_enabled = False  # 업스케일링 ON/OFF 토글 상태
+        self.current_image_path = None
+        self.anim_timer = QTimer(self)
+        
         self.image_list = []
         self.current_index = -1
         self.archive_tempdir = None
-        self.scale_factor = self.config.get("scale_factor", 1.0)
-        self.fit_to_window = self.config.get("fit_to_window", True)
-        self.enable_thumbnails = self.config.get("enable_thumbnails", True)
-        self.enabled_upscale = self.config.get("enabled_upscale", False)  # 업스케일링 ON/OFF 토글 상태
+        self.scale_factor = self.config_manager.get("scale_factor", 1.0)
+        self.fit_to_window = self.config_manager.get("fit_to_window", True)
+        self.enabled_thumbnails = self.config_manager.get("enabled_thumbnails", True)
+        self.enabled_upscale = self.config_manager.get("enabled_upscale", False)  # 업스케일링 ON/OFF 토글 상태
 
         self.gif_timer = QTimer()
         self.gif_frames = []
@@ -93,7 +104,7 @@ class ImageViewer(QMainWindow):
         file_menu.addAction(open_action)
 
         thumbs_action = QAction("썸네일 보기", self, checkable=True)
-        thumbs_action.setChecked(self.enable_thumbnails)
+        thumbs_action.setChecked(self.enabled_thumbnails)
         thumbs_action.triggered.connect(self.toggle_thumbnails)
         file_menu.addAction(thumbs_action)
 
@@ -115,13 +126,13 @@ class ImageViewer(QMainWindow):
         view_mode_group.setExclusive(True)
 
         fit_action = QAction("화면에 맞춤", self, checkable=True)
-        fit_action.setChecked(self.config.get("fit_to_window", True))
+        fit_action.setChecked(self.config_manager.get("fit_to_window", True))
         fit_action.triggered.connect(self.toggle_fit_to_window)
         view_mode_group.addAction(fit_action)
         view_menu.addAction(fit_action)
 
         orig_action = QAction("원본 크기", self, checkable=True)
-        orig_action.setChecked(not self.config.get("fit_to_window", True))
+        orig_action.setChecked(not self.config_manager.get("fit_to_window", True))
         orig_action.triggered.connect(self.toggle_original_size)
         view_mode_group.addAction(orig_action)
         view_menu.addAction(orig_action)
@@ -131,13 +142,13 @@ class ImageViewer(QMainWindow):
         page_mode_group.setExclusive(True)
 
         single_action = QAction("한장씩 보기", self, checkable=True)
-        single_action.setChecked(self.config.get("page_mode", "single") == "single")
+        single_action.setChecked(self.config_manager.get("page_mode", "single") == "single")
         single_action.triggered.connect(lambda: self.set_page_mode("single"))
         page_mode_group.addAction(single_action)
         view_menu.addAction(single_action)
 
         double_action = QAction("두장씩 보기", self, checkable=True)
-        double_action.setChecked(self.config.get("page_mode", "single") == "double")
+        double_action.setChecked(self.config_manager.get("page_mode", "single") == "double")
         double_action.triggered.connect(lambda: self.set_page_mode("double"))
         page_mode_group.addAction(double_action)
         view_menu.addAction(double_action)
@@ -154,26 +165,22 @@ class ImageViewer(QMainWindow):
 
     # 페이지 보기 적용 함수
     def set_page_mode(self, mode):
-        self.config["page_mode"] = mode
-        save_config(self.config)
+        self.config_manager["page_mode"] = mode
         self.refresh_image()
 
     def toggle_upscale(self):
         self.upscale_enabled = not self.upscale_enabled
         self.upscale_toggle.setChecked(self.upscale_enabled)
-        self.config["enabled_upscale"] = self.upscale_enabled
-        save_config(self.config)  # config/viewer_config.json 에 반영하려면
+        self.config_manager.set("enabled_upscale", self.upscale_enabled)
 
     def toggle_fit_to_window(self, checked):
         self.fit_to_window = checked
-        self.config["fit_to_window"] = checked
-        save_config(self.config)
+        self.config_manager.set("fit_to_window", self.fit_to_window)
         self.refresh_image()
 
     def toggle_original_size(self, checked):
         self.fit_to_window = not checked
-        self.config["fit_to_window"] = not checked
-        save_config(self.config)
+        self.config_manager.set("fit_to_window", self.fit_to_window)
         self.refresh_image()
 
     def refresh_image(self):
@@ -233,39 +240,111 @@ class ImageViewer(QMainWindow):
         self.open_image(self.image_list[0])
 
     def open_image(self, path):
-        self.gif_timer.stop()
-        self.gif_frames.clear()
-        self.gif_delays.clear()
+        """
+        이미지를 열고 목록에 등록하며 표시하는 함수.
+        이미지 폴더를 기준으로 이미지 리스트를 재구성하고 현재 인덱스를 설정한다.
+        """
+        folder = os.path.dirname(path)
+        self.image_list = sorted([
+            os.path.join(folder, f) for f in os.listdir(folder)
+            if f.lower().endswith((".jpg", ".jpeg", ".png", ".bmp", ".gif"))
+        ])
+        path = os.path.abspath(path)
+
+        if path in map(os.path.abspath, self.image_list):
+            self.current_index = list(map(os.path.abspath, self.image_list)).index(path)
+        else:
+            self.image_list.insert(0, path)
+            self.current_index = 0
+
+        self.current_image_path = path
+        self.display_image(path)
+
+    def display_image(self, path):
+        """
+        실제 이미지를 화면에 표시하는 핵심 처리 함수.
+        - 업스케일링
+        - 회전, 반전
+        - gif 여부에 따른 분기
+        """
+        # 이미지 전환 시 GIF 재생 정리
+        if self.anim_timer.isActive():
+            self.anim_timer.stop()
+        try:
+            self.anim_timer.timeout.disconnect()
+        except Exception:
+            pass
+
+        if not os.path.exists(path):
+            QMessageBox.warning(self, "경고", "이미지를 찾을 수 없습니다.")
+            return
 
         if path.lower().endswith(".gif"):
-            pil_img = Image.open(path)
-            for frame in ImageSequence.Iterator(pil_img):
-                rgba = frame.convert("RGBA")
-                delay = frame.info.get("duration", 100)
-                self.gif_delays.append(delay)
-                data = rgba.tobytes("raw", "RGBA")
-                qimg = QImage(data, rgba.width, rgba.height, QImage.Format_RGBA8888)
-                self.gif_frames.append(QPixmap.fromImage(qimg))
+            self.play_gif(path)
+            return
 
-            self.gif_index = 0
-            self.gif_timer.timeout.connect(self.update_gif_frame_pil)
-            self.gif_timer.start(self.gif_delays[0])
+        img = cv2.imread(path)
+        if img is None:
+            QMessageBox.warning(self, "경고", "이미지를 열 수 없습니다.")
+            return
+
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # 회전 및 반전
+        if self.rotation_angle != 0:
+            rot_map = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
+            img = cv2.rotate(img, rot_map.get(self.rotation_angle, 0))
+        if self.flip_horizontal:
+            img = cv2.flip(img, 1)
+        if self.flip_vertical:
+            img = cv2.flip(img, 0)
+
+        # 업스케일 적용
+        if self.upscale_enabled and self.upscaler:
+            try:
+                cache_path = self.get_cached_path(path)
+                if os.path.exists(cache_path):
+                    img = cv2.imread(cache_path)
+                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                else:
+                    output, _ = self.upscaler.enhance(img)
+                    cv2.imwrite(cache_path, output)
+                    img = output
+            except Exception as e:
+                print(f"[!] 업스케일링 실패: {e}")
+
+        h, w, ch = img.shape
+        bytes_per_line = ch * w
+        if not img.flags['C_CONTIGUOUS']:
+            img = np.ascontiguousarray(img)
+        qimg = QImage(img.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimg)
+
+        if self.fit_to_window:
+            scaled = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio)
         else:
-            img = cv2.imread(path)
-            self.display_image(img)
+            scaled = pixmap.scaled(pixmap.size() * self.scale_factor, Qt.KeepAspectRatio)
+
+        self.image_label.setPixmap(scaled)
         self.update_title()
 
+    def get_cached_path(self, image_path: str) -> str:
+        name_hash = hashlib.md5(image_path.encode()).hexdigest()
+        ext = os.path.splitext(image_path)[1].lower()
+        cache_name = f"{name_hash}{ext}"
+        return os.path.join("src/cache", cache_name)
+
     def play_gif(self, path):
+        """
+        gif 이미지 재생을 처리하는 함수 (프레임 기반 애니메이션)
+        """
         import imageio.v3 as iio
         self.gif_frames = []
         self.gif_durations = []
 
         try:
             for frame in iio.imiter(path, plugin="pillow", mode="RGB"):
-                img = frame
-                self.gif_frames.append(img)
-                self.gif_durations.append(100)  # fallback (수정됨 아래에서 진짜 duration 추출)
-            
+                self.gif_frames.append(frame)
             meta = iio.immeta(path, plugin="pillow")
             duration = meta.get("duration", 100)
             self.gif_durations = [duration for _ in self.gif_frames]
@@ -277,16 +356,30 @@ class ImageViewer(QMainWindow):
         if not self.gif_frames:
             return
 
-        self.anim_timer.timeout.disconnect()
+        # ✨ 프레임 타이머 안전하게 초기화
+        if self.anim_timer.isActive():
+            self.anim_timer.stop()
+        try: # 깔끔한 연결 해제
+            self.anim_timer.timeout.disconnect(self.update_gif_frame)
+        except (RuntimeError, TypeError):
+            pass
+        
         self.anim_timer.timeout.connect(self.update_gif_frame)
         self.anim_timer.start(self.gif_durations[0])
-
+    
     def update_gif_frame(self):
+        """
+        GIF 프레임을 순차적으로 표시하는 타이머 함수.
+        프레임 재생 속도는 프레임당 duration에 맞춰 자동 설정됨.
+        """
+        if not self.gif_frames:
+            return
+
         frame = self.gif_frames[self.current_gif_index]
         h, w, ch = frame.shape
         bytes_per_line = ch * w
-        qt_image = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(qt_image)
+        qimg = QImage(frame.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimg)
 
         if self.fit_to_window:
             scaled = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio)
@@ -294,24 +387,11 @@ class ImageViewer(QMainWindow):
             scaled = pixmap.scaled(pixmap.size() * self.scale_factor, Qt.KeepAspectRatio)
 
         self.image_label.setPixmap(scaled)
+
+        # 다음 프레임 준비
         self.current_gif_index = (self.current_gif_index + 1) % len(self.gif_frames)
-
-        next_interval = self.gif_durations[self.current_gif_index]
-        self.anim_timer.start(next_interval)
-
-    def display_image(self, img):
-        if img is None:
-            return
-        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-        h, w, ch = rgb.shape
-        bytes_per_line = ch * w
-        qt_image = QImage(rgb.data, w, h, bytes_per_line, QImage.Format_RGB888)
-        pixmap = QPixmap.fromImage(qt_image)
-        if self.fit_to_window:
-            pixmap = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio)
-        else:
-            pixmap = pixmap.scaled(pixmap.size() * self.scale_factor, Qt.KeepAspectRatio)
-        self.image_label.setPixmap(pixmap)
+        next_duration = self.gif_durations[self.current_gif_index]
+        self.anim_timer.start(next_duration)
 
     def update_title(self):
         if 0 <= self.current_index < len(self.image_list):
@@ -334,7 +414,7 @@ class ImageViewer(QMainWindow):
                 self.open_thumbnail_dialog()
     
     def open_thumbnail_dialog(self, force=False):
-        if not self.enable_thumbnails and not force:
+        if not self.enabled_thumbnails and not force:
             return
         if not self.image_list:
             QMessageBox.information(self, "정보", "이미지 리스트가 비어 있습니다.")
@@ -409,21 +489,40 @@ class ImageViewer(QMainWindow):
             self.open_image(self.image_list[self.current_index])
 
     def toggle_thumbnails(self, checked):
-        self.enable_thumbnails = checked
-        self.config["enable_thumbnails"] = checked
-        save_config(self.config)
+        self.enabled_thumbnails = checked
+        self.config_manager.set("enabled_thumbnails", self.enable_thumbnails)
 
     def open_setting_dialog(self):
-        dlg = SettingDialog(self.config, self)
+        dlg = SettingDialog(self.config_manager, self)
         if dlg.exec():
             values = dlg.get_values()
-            self.config.update(values)
-            save_config(self.config)
-            self.upscaler = create_upscaler(self.config)
+            # update 대신 반복문으로 set 호출
+            for key, val in values.items():
+                self.config_manager.set(key, val)
+            # 업스케일러 재생성
+            self.upscaler = create_upscaler(self.config_manager)
             QMessageBox.information(self, "설정 적용됨", "업스케일 설정이 변경되었습니다.")
 
     def reset_settings(self):
-        self.config = DEFAULT_CONFIG.copy()
-        save_config(self.config)
-        self.upscaler = create_upscaler(self.config)
+        # 1. 기본값 덮어쓰기
+        self.config_manager.set("enabled_upscale", False)
+        self.config_manager.set("enabled_thumbnails", True)
+        self.config_manager.set("fit_to_window", True)
+        self.config_manager.set("scale_factor", 1.0)
+        self.config_manager.set("tile", 128)
+        self.config_manager.set("scale", 4)
+        self.config_manager.set("model_path", "src/models/RealESRNET_x4plus.pth")
+        self.config_manager.set("half", False)
+        self.config_manager.set("page_mode", "single")
+
+        # 2. 반영
+        self.upscale_enabled = False
+        self.enable_thumbnails = True
+        self.fit_to_window = True
+        self.scale_factor = 1.0
+        self.page_mode = "single"
+
+        # 3. 업스케일러 재생성
+        self.upscaler = create_upscaler(self.config_manager)
+
         QMessageBox.information(self, "초기화", "기본 설정으로 초기화되었습니다.")
