@@ -1,29 +1,40 @@
-import os
 import json
+import os
+
+CONFIG_PATH = "config/viewer_config.json"
+DEFAULT_CONFIG_PATH = "config/default_config.json"
 
 class ConfigManager:
-    def __init__(self, path="config/viewer_config.json"):
-        self.path = path
-        self.config = self.load()
+    def __init__(self):
+        self.config = self.load_config()
 
-    def load(self):
-        try:
-            with open(self.path, 'r', encoding='utf-8') as f:
+    def load_config(self):
+        if os.path.exists(CONFIG_PATH):
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError):
-            return {}
+        else:
+            return self.load_default()
+
+    def load_default(self):
+        with open(DEFAULT_CONFIG_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
 
     def save(self):
-        os.makedirs(os.path.dirname(self.path), exist_ok=True)
-        try:
-            with open(self.path, 'w', encoding='utf-8') as f:
-                json.dump(self.config, f, indent=2, ensure_ascii=False)
-        except Exception as e:
-            print(f"[설정 저장 오류] {e}")
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(self.config, f, indent=4, ensure_ascii=False)
+
+    def reset_to_default(self):
+        self.config = self.load_default()
+        self.save()
 
     def get(self, key, default=None):
         return self.config.get(key, default)
 
     def set(self, key, value):
         self.config[key] = value
-        self.save()
+
+    def get_all(self):
+        return self.config
+
+    def update(self, values: dict):
+        self.config.update(values)

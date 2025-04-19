@@ -11,55 +11,15 @@ except ImportError:
 from PIL import Image, ImageSequence
 
 from PySide6.QtWidgets import (
-    QMainWindow, QLabel, QFileDialog, QMenuBar, QDialog, QFormLayout,
-    QDialogButtonBox, QLineEdit, QHBoxLayout, QPushButton, QMenu, QMessageBox, QListWidget, QListWidgetItem, QVBoxLayout
+    QMainWindow, QLabel, QFileDialog, QMenuBar, QDialog, QMenu, QMessageBox, QListWidget, QListWidgetItem, QVBoxLayout
 )
-from PySide6.QtGui import QPixmap, QImage, QAction, QKeyEvent, QWheelEvent, QContextMenuEvent, QActionGroup
+from PySide6.QtGui import QPixmap, QImage, QAction, QWheelEvent, QContextMenuEvent, QActionGroup
 from PySide6.QtCore import Qt, QSize, QTimer
 
 from core.config_manager import ConfigManager
 from core.upscaler import create_upscaler
 from core.image_utils import is_image_file, extract_archive, get_file_extension
-
-class SettingDialog(QDialog):
-    def __init__(self, config, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("설정")
-        self.config = config
-        layout = QFormLayout()
-
-        self.tile_input = QLineEdit(str(config.get("tile", 128)))
-        self.scale_input = QLineEdit(str(config.get("scale", 4)))
-
-        self.model_input = QLineEdit(config.get("model_path", ""))
-        model_btn = QPushButton("찾아보기")
-        model_btn.clicked.connect(self.browse_model_path)
-        model_layout = QHBoxLayout()
-        model_layout.addWidget(self.model_input)
-        model_layout.addWidget(model_btn)
-
-        layout.addRow("Tile:", self.tile_input)
-        layout.addRow("Scale:", self.scale_input)
-        layout.addRow("Model Path:", model_layout)
-
-        btns = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        btns.accepted.connect(self.accept)
-        btns.rejected.connect(self.reject)
-        layout.addWidget(btns)
-        self.setLayout(layout)
-
-    def browse_model_path(self):
-        file_path, _ = QFileDialog.getOpenFileName(self, "모델 파일 선택", "", "Model Files (*.pth)")
-        if file_path:
-            self.model_input.setText(file_path)
-
-    def get_values(self):
-        return {
-            "tile": int(self.tile_input.text()),
-            "scale": int(self.scale_input.text()),
-            "model_path": self.model_input.text()
-        }
-
+from ui.setting_dialog import SettingDialog
 
 class ImageViewer(QMainWindow):
     def __init__(self):
@@ -97,6 +57,7 @@ class ImageViewer(QMainWindow):
         self.gif_index = 0
 
         self.init_menu_bar()
+        self.integrate_settings_and_thumbnail_ui()
 
     def init_menu_bar(self):
         menu_bar = QMenuBar(self)
@@ -466,6 +427,32 @@ class ImageViewer(QMainWindow):
         dialog.setLayout(layout)
         dialog.exec()
 
+    def integrate_settings_and_thumbnail_ui(self):
+        """Viewer 클래스 내부에 통합 메서드로 삽입하면 좋음"""
+
+        # 메뉴 추가
+        settings_menu = self.menuBar().addMenu("설정")
+        setting_action = QAction("환경 설정", self)
+        settings_menu.addAction(setting_action)
+        setting_action.triggered.connect(self.open_setting_dialog)
+
+        tools_menu = self.menuBar().addMenu("도구")
+        thumb_action = QAction("썸네일 보기", self, checkable=True)
+        thumb_action.setChecked(self.config_manager.get("enabled_thumbnails", False))
+        thumb_action.toggled.connect(self.toggle_thumbnails)
+        tools_menu.addAction(thumb_action)
+
+        # 키 이벤트 오버라이드
+        original_keyPressEvent = self.keyPressEvent
+        def new_keyPressEvent(event):
+            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+                self.open_thumbnail_dialog(force=True)
+            elif event.key() == Qt.Key_Escape:
+                self.close()
+            else:
+                original_keyPressEvent(event)
+        self.keyPressEvent = new_keyPressEvent
+
     def wheelEvent(self, event: QWheelEvent):
         if event.angleDelta().y() > 0:
             self.load_previous_image()
@@ -496,20 +483,16 @@ class ImageViewer(QMainWindow):
             self.current_index -= 1
             self.open_image(self.image_list[self.current_index])
 
-    def toggle_thumbnails(self, checked):
-        self.enabled_thumbnails = checked
-        self.config_manager.set("enabled_thumbnails", self.enable_thumbnails)
-
     def open_setting_dialog(self):
-        dlg = SettingDialog(self.config_manager, self)
+        dlg = SettingDialog(self.config_manager.get_all(), self)
         if dlg.exec():
-            values = dlg.get_values()
-            # update 대신 반복문으로 set 호출
-            for key, val in values.items():
-                self.config_manager.set(key, val)
-            # 업스케일러 재생성
+            updated = dlg.get_values()
+            self.config_manager.update(updated)
             self.upscaler = create_upscaler(self.config_manager)
-            QMessageBox.information(self, "설정 적용됨", "업스케일 설정이 변경되었습니다.")
+            QMessageBox.information(self, "적용 완료", "설정이 저장되었습니다.")
+
+    def toggle_thumbnails(self, checked):
+        self.config_manager.set("enabled_thumbnails", checked)
 
     def reset_settings(self):
         # 1. 기본값 덮어쓰기
