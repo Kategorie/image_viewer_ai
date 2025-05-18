@@ -1,35 +1,52 @@
+import os
 import json
-from dataclasses import dataclass
-from typing import Any
+from dataclasses import dataclass, fields
 
+DEFAULT_SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "settings.json")
 
 @dataclass
 class AppSettings:
-    fit_to_window: bool = True
     scale_factor: float = 1.0
+    fit_to_window: bool = True
     enabled_thumbnails: bool = True
     enabled_upscale: bool = False
-    tile: int = 128
-    scale: int = 4
-    model_path: str = "src/models/RealESRNET_x4plus.pth"
-    half: bool = False
     page_mode: str = "single"
-    language: str = "ko"
+    model_path: str = "src/models/RealESRNet_x4plus.pth"
+    tile: int = 128
+    tile_pad: int = 4
+    half: bool = False
 
-    @staticmethod
-    def load_from_json(path: str) -> "AppSettings":
+    def __post_init__(self):
+        self._on_change_callback = None  # 안전한 콜백 처리
+
+    @classmethod
+    def load_from_json(cls, path=DEFAULT_SETTINGS_PATH):
         try:
             with open(path, "r", encoding="utf-8") as f:
                 data = json.load(f)
-            return AppSettings(**data)
-        except Exception as e:
-            print(f"[WARNING] Failed to load settings. Using default. Error: {e}")
-            return AppSettings()
-    
-    def save_to_json(self, path: str):
-        try:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(self.__dict__, f, indent=2, ensure_ascii=False)
-            print(f"[INFO] Settings saved to {path}")
-        except Exception as e:
-            print(f"[ERROR] Failed to save settings. Error: {e}")
+        except Exception:
+            return cls()
+
+        default = cls()
+        for field in fields(cls):
+            if field.name not in data:
+                data[field.name] = getattr(default, field.name)
+        return cls(**data)
+
+    def get(self, key, default=None):
+        return getattr(self, key, default)
+
+    def set(self, key, value):
+        setattr(self, key, value)
+
+    def save_to_json(self, path=DEFAULT_SETTINGS_PATH):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        data_to_save = {field.name: getattr(self, field.name) for field in fields(self)}
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data_to_save, f, indent=4, ensure_ascii=False)
+
+        if self._on_change_callback:
+            self._on_change_callback()
+
+    def set_on_change_callback(self, callback):
+        self._on_change_callback = callback

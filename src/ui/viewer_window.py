@@ -2,10 +2,19 @@ import os
 import cv2
 import hashlib
 import numpy as np
+from PIL import Image
+import logging
 try:
     import imageio.v3 as iio
 except ImportError:
     iio = None
+
+# 로깅 설정 추가
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[logging.StreamHandler()]
+)
 
 from PySide6.QtWidgets import (
     QMainWindow, QLabel, QFileDialog, QMenuBar, QMenu, QMessageBox
@@ -19,6 +28,9 @@ from utils.image_utils import is_image_file, extract_archive, get_file_extension
 from ui.setting_dialog import SettingDialog
 from ui.thumbnail_dialog import ThumbnailDialog
 from utils.gif_player import GifPlayer
+from core.image_transform import apply_rotation, apply_flip, apply_scaling
+
+
 class ImageViewer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -26,6 +38,8 @@ class ImageViewer(QMainWindow):
         self.setGeometry(100, 100, 1000, 700)
 
         self.settings = AppSettings.load_from_json("config/settings.json")
+        self.settings.set_on_change_callback(self.refresh_image)
+
         self.upscaler = create_upscaler("real-esrgan", self.settings)
 
         self.image_label = QLabel("이미지를 불러오세요", self)
@@ -136,12 +150,12 @@ class ImageViewer(QMainWindow):
 
     def refresh_image(self):
         if self.current_index >= 0 and self.current_index < len(self.image_list):
-            self.load_image(self.image_list[self.current_index])
+            self.open_image(self.image_list[self.current_index])
 
     def open_file_dialog(self):
         file_path, _ = QFileDialog.getOpenFileName(self, "파일 열기", "", "Images (*.png *.jpg *.jpeg *.bmp *.gif *.zip *.cbz)")
         if file_path:
-            self.load_image(file_path)
+            self.open_image(file_path)
 
     def open_setting_dialog(self):
         dialog = SettingDialog(self.settings, self)
@@ -161,10 +175,15 @@ class ImageViewer(QMainWindow):
         self.refresh_image()
 
     def get_cached_path(self, image_path: str) -> str:
+        import os
+        import hashlib
+
+        cache_dir = os.path.join(os.path.dirname(__file__), "../cache")
+        os.makedirs(cache_dir, exist_ok=True)
         name_hash = hashlib.md5(image_path.encode()).hexdigest()
         ext = os.path.splitext(image_path)[1].lower()
         cache_name = f"{name_hash}{ext}"
-        return os.path.join("src/cache", cache_name)
+        return os.path.join(cache_dir, cache_name)
 
     def open_image(self, path):
         folder = os.path.dirname(path)
@@ -195,7 +214,7 @@ class ImageViewer(QMainWindow):
             if self.gif_player.load(path):
                 self.gif_player.start()
             return
-        
+
         img = cv2.imread(path)
         if img is None:
             QMessageBox.warning(self, "경고", "이미지를 열 수 없습니다.")
@@ -203,27 +222,17 @@ class ImageViewer(QMainWindow):
 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
-        if self.rotation_angle != 0:
-            rot_map = {90: cv2.ROTATE_90_CLOCKWISE, 180: cv2.ROTATE_180, 270: cv2.ROTATE_90_COUNTERCLOCKWISE}
-            img = cv2.rotate(img, rot_map.get(self.rotation_angle, 0))
-        if self.flip_horizontal:
-            img = cv2.flip(img, 1)
-        if self.flip_vertical:
-            img = cv2.flip(img, 0)
+        # 회전 및 반전
+        if self.rotation_angle != 0 or self.flip_horizontal or self.flip_vertical:
+            img = apply_rotation(img, self.rotation_angle)
+            img = apply_flip(img, self.flip_horizontal, self.flip_vertical)
 
-        if self.upscale_enabled and self.upscaler:
-            try:
-                cache_path = self.get_cached_path(path)
-                if os.path.exists(cache_path):
-                    img = cv2.imread(cache_path)
-                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                else:
-                    output, _ = self.upscaler.enhance(img)
-                    cv2.imwrite(cache_path, output)
-                    img = output
-            except Exception as e:
-                print(f"[!] 업스케일링 실패: {e}")
+        # ✅ 업스케일링은 메뉴에서 직접 클릭 시에만 진행
+        if self.upscale_enabled:
+            self.start_upscaling(path)
+            return
 
+        # QImage로 변환
         h, w, ch = img.shape
         bytes_per_line = ch * w
         if not img.flags['C_CONTIGUOUS']:
@@ -231,14 +240,15 @@ class ImageViewer(QMainWindow):
         qimg = QImage(img.data, w, h, bytes_per_line, QImage.Format_RGB888)
         pixmap = QPixmap.fromImage(qimg)
 
+        # ✅ 스케일 조정 (fit_to_window 활성화 여부에 따라)
         if self.fit_to_window:
-            scaled = pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio)
+            scaled = apply_scaling(pixmap, self.scale_factor, self.image_label.size())
         else:
-            scaled = pixmap.scaled(pixmap.size() * self.scale_factor, Qt.KeepAspectRatio)
+            scaled = apply_scaling(pixmap, self.scale_factor)
 
         self.image_label.setPixmap(scaled)
         self.update_title()
-
+        
     def update_title(self):
         if 0 <= self.current_index < len(self.image_list):
             base = os.path.basename(self.image_list[self.current_index])
@@ -261,6 +271,15 @@ class ImageViewer(QMainWindow):
             self.load_previous_image()
         else:
             self.load_next_image()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        if self.gif_player and self.gif_frames:
+            self.gif_player.fit_to_window = self.fit_to_window
+            self.gif_player.scale_factor = self.scale_factor
+            self.gif_player.update_frame()
+        elif self.current_index != -1:
+            self.refresh_image()
 
     def load_next_image(self):
         if self.current_index + 1 < len(self.image_list):
@@ -291,5 +310,56 @@ class ImageViewer(QMainWindow):
         if 0 <= self.current_index < len(self.image_list):
             path = self.image_list[self.current_index]
             size_kb = os.path.getsize(path) / 1024
-            msg = f"파일명: {os.path.basename(path)}\n크기: {size_kb:.2f} KB"
+            img = cv2.imread(path)
+            h, w = img.shape[:2] if img is not None else ("?", "?")
+            msg = (
+                f"파일명: {os.path.basename(path)}\n"
+                f"크기: {size_kb:.2f} KB\n"
+                f"해상도: {w} x {h}"
+            )
             QMessageBox.information(self, "이미지 정보", msg)
+
+    def start_upscaling(self, path):
+        if not self.upscaler:
+            QMessageBox.warning(self, "오류", "업스케일러가 초기화되지 않았습니다.")
+            return
+
+        try:
+            img = cv2.imread(path)
+            if img is None:
+                raise ValueError("이미지를 읽을 수 없습니다.")
+
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            pil_img = Image.fromarray(img)
+
+            cache_path = self.get_cached_path(path)
+            if os.path.exists(cache_path):
+                img = cv2.imread(cache_path)
+                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            else:
+                # ✅ AI 업스케일 시도
+                output = self.upscaler.upscale(pil_img)
+                result_np = np.array(output)
+                cv2.imwrite(cache_path, cv2.cvtColor(result_np, cv2.COLOR_RGB2BGR))
+                img = result_np
+
+            # QPixmap 변환 및 표시
+            if not img.flags['C_CONTIGUOUS']:
+                img = np.ascontiguousarray(img)
+            h, w, ch = img.shape
+            bytes_per_line = ch * w
+            qimg = QImage(img.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            pixmap = QPixmap.fromImage(qimg)
+
+            if self.fit_to_window:
+                scaled = apply_scaling(pixmap, self.scale_factor, self.image_label.size())
+            else:
+                scaled = apply_scaling(pixmap, self.scale_factor)
+
+            self.image_label.setPixmap(scaled)
+            self.update_title()
+
+        except Exception as e:
+            logging.warning(f"업스케일링 실패: {e}")
+            QMessageBox.warning(self, "업스케일링 오류", "이미지를 향상하는 중 문제가 발생하여 원본 이미지를 표시합니다.")
+            self.display_image(path)  # fallback to original

@@ -26,33 +26,34 @@ Real-ESRGAN or waifu2x (PyTorch 기반)
 # 파일 구조
 
 image_viewer_ai/
-├── main.py
-├── config/
-│   └── settings.json
-├── src/
-│   ├── ui/
-│   │   ├── __init__.py
-│   │   └── viewer_window.py
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── image_handler.py
-│   │   ├── settings_manager.py
-│   │   └── upscale_utils.py
-│   ├── plugins/
-│   │   ├── __init__.py
-│   │   ├── real_esrgan_plugin.py
-│   │   └── waifu2x_plugin.py
-│   └── workers/
-│       ├── __init__.py
-│       └── upscaling_worker.py
-├── resources/
-│   ├── icons/
-│   └── themes/
-├── tests/
-│   ├── __init__.py
-│   └── test_image_handler.py
+├── .gitignore
+├── readme.txt
 ├── requirements.txt
-└── README.md
+├── src/
+│   ├── main.py
+│   ├── cache/
+│   ├── config/
+│   │   ├── settings.json
+│   │   └── settings_loader.py
+│   ├── core/
+│   │   └── upscale_utils.py
+│   ├── models/
+│   │   └── RealESRNet_x4plus.pth
+│   ├── plugins/
+│   │   ├── base_upscaler.py
+│   │   ├── plugin_loader.py
+│   │   └── real_esrgan_plugin.py
+│   ├── ui/
+│   │   ├── setting_dialog.py
+│   │   ├── thumbnail_dialog.py
+│   │   └── viewer_window.py
+│   ├── utils/
+│   │   ├── gif_player.py
+│   │   ├── image_utils.py
+│   │   └── pixmap_cache.py
+│   └── workers/
+│       └── upscaling_worker.py
+└──
 
 --------------------------------------------------------------------------------------------------------
 

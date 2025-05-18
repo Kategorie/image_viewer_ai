@@ -11,3 +11,10 @@ __pycache__/
 *.sqlite
 *.log
 *.csv
+
+# 모델 파일
+*.pth
+*.onnx
+*.ckpt
+*.tflite
+models/

@@ -1,3 +1,5 @@
+import logging
+
 from PySide6.QtCore import QTimer, Qt
 from PySide6.QtGui import QImage, QPixmap
 from PySide6.QtWidgets import QLabel, QMessageBox
@@ -35,7 +37,7 @@ class GifPlayer:
             duration = meta.get("duration", 100)
             self.durations = [duration for _ in self.frames]
         except Exception as e:
-            print("[GIF 오류]", e)
+            logging.error(f"[GIF 오류] {e}")
             return False
 
         return True

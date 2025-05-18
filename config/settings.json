@@ -1,0 +1,11 @@
+{
+    "scale_factor": 1.0,
+    "fit_to_window": true,
+    "enabled_thumbnails": true,
+    "enabled_upscale": true,
+    "page_mode": "single",
+    "model_path": "src/models/RealESRNet_x4plus.pth",
+    "tile": 128,
+    "tile_pad": 4,
+    "half": false
+}

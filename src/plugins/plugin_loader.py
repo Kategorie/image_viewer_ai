@@ -1,12 +1,15 @@
+import logging
 from .real_esrgan_plugin import RealESRGANUpscaler
-# 필요 시 다른 모델도 등록
+# from .waifu2x_plugin import Waifu2xUpscaler
 
 PLUGINS = {
     "real-esrgan": RealESRGANUpscaler,
-    # "swinir": SwinIRUpscaler,
+    # "waifu2x": Waifu2xUpscaler,
 }
 
 def create_upscaler(name: str, settings):
+    name = name.lower()
     if name not in PLUGINS:
-        raise ValueError(...)
+        logging.error(f"지원하지 않는 업스케일러: {name}")
+        raise ValueError(f"지원하지 않는 업스케일러: {name}")
     return PLUGINS[name](settings)

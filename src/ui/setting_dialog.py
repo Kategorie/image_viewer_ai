@@ -4,8 +4,7 @@ from PySide6.QtWidgets import (
     QFileDialog, QStackedWidget, QComboBox
 )
 from config.settings_loader import AppSettings
-from copy import deepcopy
-
+from dataclasses import replace
 class SettingDialog(QDialog):
     def __init__(self, settings: AppSettings, parent=None):
         super().__init__(parent)
@@ -13,7 +12,7 @@ class SettingDialog(QDialog):
         self.resize(600, 400)
 
         self.settings = settings
-        self.modified = deepcopy(settings)
+        self.modified = replace(settings)
 
         main_layout = QHBoxLayout(self)
         self.section_list = QListWidget()
@@ -43,9 +42,9 @@ class SettingDialog(QDialog):
         g_layout = QVBoxLayout(general)
 
         self.chk_thumbnails = QCheckBox("썸네일 보기")
-        self.chk_thumbnails.setChecked(self.config.get("enabled_thumbnails", False))
+        self.chk_thumbnails.setChecked(self.settings.get("enabled_thumbnails", False))
         self.chk_upscale = QCheckBox("업스케일링 사용")
-        self.chk_upscale.setChecked(self.config.get("enabled_upscale", False))
+        self.chk_upscale.setChecked(self.settings.get("enabled_upscale", False))
 
         g_layout.addWidget(self.chk_thumbnails)
         g_layout.addWidget(self.chk_upscale)
@@ -59,12 +58,12 @@ class SettingDialog(QDialog):
 
         self.spn_scale = QSpinBox()
         self.spn_scale.setRange(1, 8)
-        self.spn_scale.setValue(self.config.get("scale", 4))
+        self.spn_scale.setValue(self.settings.get("scale", 4))
         self.spn_tile = QSpinBox()
         self.spn_tile.setRange(0, 1024)
-        self.spn_tile.setValue(self.config.get("tile", 128))
+        self.spn_tile.setValue(self.settings.get("tile", 128))
 
-        self.model_path = QLineEdit(self.config.get("model_path", ""))
+        self.model_path = QLineEdit(self.settings.get("model_path", ""))
         self.btn_model_path = QPushButton("모델 경로 찾기")
         self.btn_model_path.clicked.connect(self.browse_model)
 
@@ -85,15 +84,15 @@ class SettingDialog(QDialog):
 
         self.cmb_theme = QComboBox()
         self.cmb_theme.addItems(["light", "dark"])
-        self.cmb_theme.setCurrentText(self.config.get("theme", "light"))
+        self.cmb_theme.setCurrentText(self.settings.get("theme", "light"))
 
         self.spn_font = QSpinBox()
         self.spn_font.setRange(8, 20)
-        self.spn_font.setValue(self.config.get("font_size", 10))
+        self.spn_font.setValue(self.settings.get("font_size", 10))
 
         self.cmb_lang = QComboBox()
         self.cmb_lang.addItems(["ko", "en"])
-        self.cmb_lang.setCurrentText(self.config.get("language", "ko"))
+        self.cmb_lang.setCurrentText(self.settings.get("language", "ko"))
 
         i_layout.addWidget(QLabel("테마"))
         i_layout.addWidget(self.cmb_theme)

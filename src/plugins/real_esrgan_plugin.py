@@ -6,19 +6,27 @@ import numpy as np
 
 class RealESRGANUpscaler(BaseUpscaler):
     def __init__(self, settings):
-        self.model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64,
-                             num_block=23, num_grow_ch=32, scale=settings.scale)
+        model = RRDBNet(
+            num_in_ch=3,
+            num_out_ch=3,
+            num_feat=64,
+            num_block=23,
+            num_grow_ch=32,
+            scale=4  # ⚠️ 고정: 모델 학습 스케일과 일치
+        )
+
         self.upscaler = RealESRGANer(
-            scale=settings.scale,
             model_path=settings.model_path,
-            model=self.model,
+            model=model,
+            scale=4,  # ⚠️ 고정
             tile=settings.tile,
-            tile_pad=4,
-            pre_pad=0,
+            tile_pad=settings.tile_pad,
             half=settings.half
         )
 
+        self.scale_factor = settings.scale_factor  # 💡 output 배율 조정용
+
     def upscale(self, image: Image.Image) -> Image.Image:
         img_np = np.array(image)
-        result_np, _ = self.upscaler.enhance(img_np, outscale=1)
+        result_np, _ = self.upscaler.enhance(img_np, outscale=self.scale_factor)  # ✅ 적용
         return Image.fromarray(result_np)
