@@ -8,19 +8,18 @@ try:
     import imageio.v3 as iio
 except ImportError:
     iio = None
-from PIL import Image, ImageSequence
 
 from PySide6.QtWidgets import (
-    QMainWindow, QLabel, QFileDialog, QMenuBar, QDialog, QMenu, QMessageBox, QListWidget, QListWidgetItem, QVBoxLayout
+    QMainWindow, QLabel, QFileDialog, QMenuBar, QMenu, QMessageBox
 )
 from PySide6.QtGui import QPixmap, QImage, QAction, QWheelEvent, QContextMenuEvent, QActionGroup
-from PySide6.QtCore import Qt, QSize, QTimer
+from PySide6.QtCore import Qt, QTimer
 
 from core.config_manager import ConfigManager
 from core.upscaler import create_upscaler
-from core.image_utils import is_image_file, extract_archive, get_file_extension
+from utils.image_utils import is_image_file, extract_archive, get_file_extension
 from ui.setting_dialog import SettingDialog
-
+from ui.thumbnail_dialog import ThumbnailDialog
 class ImageViewer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -41,6 +40,7 @@ class ImageViewer(QMainWindow):
         self.flip_vertical = False
         self.upscale_enabled = False  # 업스케일링 ON/OFF 토글 상태
         self.current_image_path = None
+        self.current_image_dir = None
         self.anim_timer = QTimer(self)
         
         self.image_list = []
@@ -125,7 +125,7 @@ class ImageViewer(QMainWindow):
 
         # 썸네일 다이얼로그 보기
         thumbnail_dialog_action = QAction("썸네일 보기", self)
-        thumbnail_dialog_action.triggered.connect(lambda: self.open_thumbnail_dialog(force=True))
+        thumbnail_dialog_action.triggered.connect(lambda: self.open_thumbnail_dialog())
         tools_menu.addAction(thumbnail_dialog_action)
 
 
@@ -377,69 +377,28 @@ class ImageViewer(QMainWindow):
             self.load_previous_image()
         elif event.key() == Qt.Key_Escape:
             self.close()
-        elif event.key() == Qt.Key_Return:  # 또는 Qt.Key_Enter
-            self.open_thumbnail_dialog(force=True)
-        """
-        elif event.key() == Qt.Key_Return and self.current_image_path:
-            abs_list = [os.path.abspath(p) for p in self.image_list]
-            current = os.path.abspath(self.current_image_path)
-            if current in abs_list:
-                self.open_thumbnail_dialog(force=True)
-        """
-    def open_thumbnail_dialog(self, force=False):
-        # image_list와 current_path가 불일치할 경우 삽입 보정
-        if self.current_image_path and self.current_image_path not in self.image_list:
-            self.image_list.insert(0, self.current_image_path)
-            self.current_index = 0
+        elif event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
+            self.open_thumbnail_dialog()
 
-        # 썸네일 보기 설정    
-        if not self.enabled_thumbnails and not force:
-            return
-        ## 썸네일 보기 다이얼로그
-        if not self.image_list:
-            QMessageBox.information(self, "정보", "이미지 리스트가 비어 있습니다.")
-            return
+    def load_image(self, image_path:str):
+        # 이미지 로딩 및 표시 로직 구현
+        self.current_image_path = image_path  # 현재 경로 저장 (탐색용)
+        self.current_image_dir = os.path.dirname(image_path)  # 이미지 폴더 경로 저장
+        pixmap = QPixmap(image_path)
         
-        ## 다이얼로그 생성
-        dialog = QDialog(self)
-        dialog.setWindowTitle("썸네일 보기")
-        layout = QVBoxLayout(dialog)
+        if pixmap.isNull():
+            print(f"이미지를 불러올 수 없습니다: {image_path}")
+            return
 
-        list_widget = QListWidget(dialog)
-        list_widget.setIconSize(QSize(160, 160))
-        list_widget.setViewMode(QListWidget.IconMode)
-        list_widget.setResizeMode(QListWidget.Adjust)
-        list_widget.setSpacing(10)
+        self.image_label.setPixmap(pixmap)
+        self.image_label.adjustSize()
 
-        ## 이미지 리스트에 있는 모든 이미지 썸네일 추가
-        for idx, path in enumerate(self.image_list):
-            item = QListWidgetItem()
-            img = cv2.imread(path)
-            if img is None:
-                continue  # 잘못된 이미지 패스
-            
-            if img is not None:
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                h, w, ch = img.shape
-                bytes_per_line = ch * w
-                qimg = QImage(img.data, w, h, bytes_per_line, QImage.Format_RGB888)
-                pixmap = QPixmap.fromImage(qimg).scaled(160, 160, aspectMode=1)
-                item.setIcon(pixmap)
-            item.setText(os.path.basename(path))
-            list_widget.addItem(item)
-
-        ## 클릭 시 이미지 열기
-        def on_item_clicked(item):
-            index = list_widget.row(item)
-            if 0 <= index < len(self.image_list):
-                self.current_index = index
-                self.open_image(self.image_list[self.current_index])
-                dialog.accept()
-
-        list_widget.itemClicked.connect(on_item_clicked)
-        layout.addWidget(list_widget)
-        dialog.setLayout(layout)
-        dialog.exec()
+    def open_thumbnail_dialog(self):
+        if hasattr(self, 'current_image_dir'):
+            dialog = ThumbnailDialog(self.current_image_dir, parent=self)
+            dialog.exec_()
+        else:
+            QMessageBox.warning(self, "경고", "이미지 폴더를 찾을 수 없습니다.")
 
     def wheelEvent(self, event: QWheelEvent):
         if event.angleDelta().y() > 0:
@@ -505,3 +464,4 @@ class ImageViewer(QMainWindow):
         self.upscaler = create_upscaler(self.config_manager)
 
         QMessageBox.information(self, "초기화", "기본 설정으로 초기화되었습니다.")
+
