@@ -57,7 +57,6 @@ class ImageViewer(QMainWindow):
         self.gif_index = 0
 
         self.init_menu_bar()
-        self.integrate_settings_and_thumbnail_ui()
 
     def init_menu_bar(self):
         menu_bar = QMenuBar(self)
@@ -76,15 +75,12 @@ class ImageViewer(QMainWindow):
         file_menu.addSeparator()
         file_menu.addAction("종료", self.close)
 
+        # 업스케일링 설정 메뉴
         settings_menu = menu_bar.addMenu("설정")
-        open_setting = QAction("업스케일 설정", self)
-        open_setting.triggered.connect(self.open_setting_dialog)
-        settings_menu.addAction(open_setting)
+        setting_dialog_action = QAction("환경설정", self)
+        setting_dialog_action.triggered.connect(self.open_setting_dialog)
+        settings_menu.addAction(setting_dialog_action)
 
-        reset_setting = QAction("기본 설정으로 초기화", self)
-        reset_setting.triggered.connect(self.reset_settings)
-        settings_menu.addAction(reset_setting)
-        
         view_menu = menu_bar.addMenu("보기")
         # 보기 크기 그룹 (단일 선택)
         view_mode_group = QActionGroup(self)
@@ -118,15 +114,20 @@ class ImageViewer(QMainWindow):
         page_mode_group.addAction(double_action)
         view_menu.addAction(double_action)
 
+        # tools_menu로 통합 추천 (도구 메뉴 전용 기능으로 분리)
         tools_menu = menu_bar.addMenu("도구")
+
+        # 업스케일링 토글
         self.upscale_toggle = QAction("업스케일 사용", self, checkable=True)
         self.upscale_toggle.setChecked(self.enabled_upscale)
         self.upscale_toggle.triggered.connect(self.toggle_upscale)
         tools_menu.addAction(self.upscale_toggle)
 
+        # 썸네일 다이얼로그 보기
         thumbnail_dialog_action = QAction("썸네일 보기", self)
-        thumbnail_dialog_action.triggered.connect(self.open_thumbnail_dialog)
+        thumbnail_dialog_action.triggered.connect(lambda: self.open_thumbnail_dialog(force=True))
         tools_menu.addAction(thumbnail_dialog_action)
+
 
     # 페이지 보기 적용 함수
     def set_page_mode(self, mode):
@@ -376,19 +377,30 @@ class ImageViewer(QMainWindow):
             self.load_previous_image()
         elif event.key() == Qt.Key_Escape:
             self.close()
+        elif event.key() == Qt.Key_Return:  # 또는 Qt.Key_Enter
+            self.open_thumbnail_dialog(force=True)
+        """
         elif event.key() == Qt.Key_Return and self.current_image_path:
             abs_list = [os.path.abspath(p) for p in self.image_list]
             current = os.path.abspath(self.current_image_path)
             if current in abs_list:
-                self.open_thumbnail_dialog()
-    
+                self.open_thumbnail_dialog(force=True)
+        """
     def open_thumbnail_dialog(self, force=False):
+        # image_list와 current_path가 불일치할 경우 삽입 보정
+        if self.current_image_path and self.current_image_path not in self.image_list:
+            self.image_list.insert(0, self.current_image_path)
+            self.current_index = 0
+
+        # 썸네일 보기 설정    
         if not self.enabled_thumbnails and not force:
             return
+        ## 썸네일 보기 다이얼로그
         if not self.image_list:
             QMessageBox.information(self, "정보", "이미지 리스트가 비어 있습니다.")
             return
-
+        
+        ## 다이얼로그 생성
         dialog = QDialog(self)
         dialog.setWindowTitle("썸네일 보기")
         layout = QVBoxLayout(dialog)
@@ -399,6 +411,7 @@ class ImageViewer(QMainWindow):
         list_widget.setResizeMode(QListWidget.Adjust)
         list_widget.setSpacing(10)
 
+        ## 이미지 리스트에 있는 모든 이미지 썸네일 추가
         for idx, path in enumerate(self.image_list):
             item = QListWidgetItem()
             img = cv2.imread(path)
@@ -415,6 +428,7 @@ class ImageViewer(QMainWindow):
             item.setText(os.path.basename(path))
             list_widget.addItem(item)
 
+        ## 클릭 시 이미지 열기
         def on_item_clicked(item):
             index = list_widget.row(item)
             if 0 <= index < len(self.image_list):
@@ -426,32 +440,6 @@ class ImageViewer(QMainWindow):
         layout.addWidget(list_widget)
         dialog.setLayout(layout)
         dialog.exec()
-
-    def integrate_settings_and_thumbnail_ui(self):
-        """Viewer 클래스 내부에 통합 메서드로 삽입하면 좋음"""
-
-        # 메뉴 추가
-        settings_menu = self.menuBar().addMenu("설정")
-        setting_action = QAction("환경 설정", self)
-        settings_menu.addAction(setting_action)
-        setting_action.triggered.connect(self.open_setting_dialog)
-
-        tools_menu = self.menuBar().addMenu("도구")
-        thumb_action = QAction("썸네일 보기", self, checkable=True)
-        thumb_action.setChecked(self.config_manager.get("enabled_thumbnails", False))
-        thumb_action.toggled.connect(self.toggle_thumbnails)
-        tools_menu.addAction(thumb_action)
-
-        # 키 이벤트 오버라이드
-        original_keyPressEvent = self.keyPressEvent
-        def new_keyPressEvent(event):
-            if event.key() in (Qt.Key_Return, Qt.Key_Enter):
-                self.open_thumbnail_dialog(force=True)
-            elif event.key() == Qt.Key_Escape:
-                self.close()
-            else:
-                original_keyPressEvent(event)
-        self.keyPressEvent = new_keyPressEvent
 
     def wheelEvent(self, event: QWheelEvent):
         if event.angleDelta().y() > 0:
