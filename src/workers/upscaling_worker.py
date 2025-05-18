@@ -4,7 +4,7 @@ from PySide6.QtCore import QThread, Signal
 from PySide6.QtGui import QPixmap
 
 # 실제 업스케일 함수는 아래에서 임포트하거나 정의하세요
-from core.upscaler import upscale_image  # 예: real_esrgan_upscale
+from core.upscale_utils import upscale_image  # 예: real_esrgan_upscale
 
 class UpscalingWorker(QThread):
     finished = Signal(QPixmap, str)  # 결과와 원본 파일 경로를 반환

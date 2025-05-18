@@ -1,6 +1,6 @@
 import sys
 from PySide6.QtWidgets import QApplication
-from ui.image_viewer_ui import ImageViewer
+from ui.viewer_window import ImageViewer
 
 def main():
     app = QApplication(sys.argv)

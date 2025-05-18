@@ -10,7 +10,7 @@ except ImportError:
     iio = None
 
 from PySide6.QtWidgets import (
-    QMainWindow, QLabel, QFileDialog, QMenuBar, QMenu, QMessageBox
+    QMainWindow, QLabel, QFileDialog, QMenuBar, QMenu, QMessageBox, QPushButton
 )
 from PySide6.QtGui import QPixmap, QImage, QAction, QWheelEvent, QContextMenuEvent, QActionGroup
 from PySide6.QtCore import Qt, QTimer
@@ -20,7 +20,7 @@ from core.upscaler import create_upscaler
 from utils.image_utils import is_image_file, extract_archive, get_file_extension
 from ui.setting_dialog import SettingDialog
 from ui.thumbnail_dialog import ThumbnailDialog
-from src.core.upscaling_worker import UpscalingWorker
+from workers.upscaling_worker import UpscalingWorker
 class ImageViewer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -81,6 +81,11 @@ class ImageViewer(QMainWindow):
         setting_dialog_action = QAction("환경설정", self)
         setting_dialog_action.triggered.connect(self.open_setting_dialog)
         settings_menu.addAction(setting_dialog_action)
+
+        self.upscale_button = QPushButton("AI 업스케일")
+        self.upscale_button.clicked.connect(lambda: self.start_upscaling(self.current_image_path))
+        settings_menu.addSeparator()
+        settings_menu.addAction(self.upscale_button)
 
         view_menu = menu_bar.addMenu("보기")
         # 보기 크기 그룹 (단일 선택)

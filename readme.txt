@@ -26,22 +26,33 @@ Real-ESRGAN or waifu2x (PyTorch 기반)
 # 파일 구조
 
 image_viewer_ai/
-├── main.py                     ← 앱 실행 진입점
+├── main.py
 ├── config/
-│   └── settings.json           ← 사용자 설정 (화면맞춤, 원본크기 등)
-│
+│   └── settings.json
 ├── src/
 │   ├── ui/
-│   │   └── viewer_window.py    ← QMainWindow, 메뉴/뷰/상태
-│   │
+│   │   ├── __init__.py
+│   │   └── viewer_window.py
 │   ├── core/
-│   │   ├── image_handler.py    ← 이미지 로딩, 업스케일, 확대/축소
-│   │   └── settings_manager.py ← JSON 설정 불러오기/저장
-│   │
-│   ├── models/
-│   │   └── RealESRNET_x4plus.pth
-│   │
-│   └── assets/                 ← UI 아이콘, 폰트 등 리소스
+│   │   ├── __init__.py
+│   │   ├── image_handler.py
+│   │   ├── settings_manager.py
+│   │   └── upscale_utils.py
+│   ├── plugins/
+│   │   ├── __init__.py
+│   │   ├── real_esrgan_plugin.py
+│   │   └── waifu2x_plugin.py
+│   └── workers/
+│       ├── __init__.py
+│       └── upscaling_worker.py
+├── resources/
+│   ├── icons/
+│   └── themes/
+├── tests/
+│   ├── __init__.py
+│   └── test_image_handler.py
+├── requirements.txt
+└── README.md
 
 --------------------------------------------------------------------------------------------------------
 
