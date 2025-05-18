@@ -20,6 +20,7 @@ from core.upscaler import create_upscaler
 from utils.image_utils import is_image_file, extract_archive, get_file_extension
 from ui.setting_dialog import SettingDialog
 from ui.thumbnail_dialog import ThumbnailDialog
+from src.core.upscaling_worker import UpscalingWorker
 class ImageViewer(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -465,3 +466,12 @@ class ImageViewer(QMainWindow):
 
         QMessageBox.information(self, "초기화", "기본 설정으로 초기화되었습니다.")
 
+    def start_upscaling(self, image_path: str):
+        self.worker = UpscalingWorker(image_path)
+        self.worker.finished.connect(self.display_upscaled_image)
+        self.worker.start()
+
+    def display_upscaled_image(self, pixmap: QPixmap, result_path: str):
+        self.image_label.setPixmap(pixmap)
+        self.image_label.adjustSize()
+        QMessageBox.information(self, "완료", f"업스케일링 완료: {result_path}")
