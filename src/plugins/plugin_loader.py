@@ -1,4 +1,4 @@
-from real_esrgan_plugin import RealESRGANUpscaler
+from .real_esrgan_plugin import RealESRGANUpscaler
 # 필요 시 다른 모델도 등록
 
 PLUGINS = {

@@ -1,4 +1,4 @@
-from base_upscaler import BaseUpscaler
+from .base_upscaler import BaseUpscaler
 from basicsr.archs.rrdbnet_arch import RRDBNet
 from realesrgan import RealESRGANer
 from PIL import Image

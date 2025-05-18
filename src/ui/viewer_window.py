@@ -1,7 +1,5 @@
 import os
 import cv2
-import zipfile
-import tempfile
 import hashlib
 import numpy as np
 try:
@@ -20,7 +18,6 @@ from plugins.plugin_loader import create_upscaler
 from utils.image_utils import is_image_file, extract_archive, get_file_extension
 from ui.setting_dialog import SettingDialog
 from ui.thumbnail_dialog import ThumbnailDialog
-from workers.upscaling_worker import UpscalingWorker
 from utils.gif_player import GifPlayer
 class ImageViewer(QMainWindow):
     def __init__(self):
