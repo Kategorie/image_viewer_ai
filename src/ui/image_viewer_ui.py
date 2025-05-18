@@ -130,7 +130,7 @@ class ImageViewer(QMainWindow):
 
     # 페이지 보기 적용 함수
     def set_page_mode(self, mode):
-        self.config_manager["page_mode"] = mode
+        self.config_manager.set("page_mode", mode)
         self.refresh_image()
 
     def toggle_upscale(self):
