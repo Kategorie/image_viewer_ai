@@ -1,8 +1,12 @@
-from .real_esrgan_plugin import RealESRGANUpscaler
+from real_esrgan_plugin import RealESRGANUpscaler
 # 필요 시 다른 모델도 등록
 
-def create_upscaler(model_name: str):
-    if model_name == "real-esrgan":
-        return RealESRGANUpscaler()
-    else:
-        raise ValueError(f"지원하지 않는 모델: {model_name}")
+PLUGINS = {
+    "real-esrgan": RealESRGANUpscaler,
+    # "swinir": SwinIRUpscaler,
+}
+
+def create_upscaler(name: str, settings):
+    if name not in PLUGINS:
+        raise ValueError(...)
+    return PLUGINS[name](settings)

@@ -3,10 +3,11 @@ import hashlib
 import zipfile
 import tempfile
 
+CACHE_DIR = "src/cache"
+
 def get_cache_path(img_path):
     hashed = hashlib.md5(img_path.encode()).hexdigest()
-    filename = f"{hashed}.png"
-    return os.path.join("src/cache", filename)
+    return os.path.join(CACHE_DIR, f"{hashed}.png")
 
 def is_image_file(filename):
     return filename.lower().endswith((".png", ".jpg", ".jpeg", ".bmp", ".gif"))

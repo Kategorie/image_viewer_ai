@@ -82,3 +82,10 @@ RealESRGANLoader: 모델 로드 및 inference 실행
 ImageLoader: 이미지 불러오기 및 저장
 
 main(): CLI 처리
+
+--------------------------------------------------------------------------------------------------------
+
+# 모델 다운로드 링크
+
+1. Real-ESRGAN
+    https://github.com/xinntao/Real-ESRGAN/releases

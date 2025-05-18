@@ -1,10 +1,12 @@
 import os
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QScrollArea, QWidget, QHBoxLayout, QLabel, QListWidget
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 
 from utils.pixmap_cache import QPixmapLRUCache # 캐시 클래스 임포트
 
 class ThumbnailDialog(QDialog):
+    imageSelected = Signal(str)
+    
     def __init__(self, image_dir, parent=None):
         super().__init__(parent)
         self.image_dir = image_dir  # 현재 이미지가 있는 폴더 경로
@@ -43,7 +45,9 @@ class ThumbnailDialog(QDialog):
         list_widget.itemClicked.connect(lambda item: self.open_image(item.text()))
         layout.addWidget(list_widget)
 
+        self.imageSelected.connect(self.parent().load_image)  # 연결만 함
+
     def open_image(self, filename):
         full_path = os.path.join(self.image_dir, filename)
-        self.parent().load_image(full_path)
+        self.imageSelected.emit(full_path)
         self.close()

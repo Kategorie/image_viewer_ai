@@ -3,15 +3,17 @@ from PySide6.QtWidgets import (
     QWidget, QLabel, QSpinBox, QLineEdit, QCheckBox, QPushButton,
     QFileDialog, QStackedWidget, QComboBox
 )
+from config.settings_loader import AppSettings
+from copy import deepcopy
 
 class SettingDialog(QDialog):
-    def __init__(self, config: dict, parent=None):
+    def __init__(self, settings: AppSettings, parent=None):
         super().__init__(parent)
         self.setWindowTitle("환경 설정")
         self.resize(600, 400)
 
-        self.config = config.copy()
-        self.modified_config = config.copy()
+        self.settings = settings
+        self.modified = deepcopy(settings)
 
         main_layout = QHBoxLayout(self)
         self.section_list = QListWidget()
@@ -128,3 +130,9 @@ class SettingDialog(QDialog):
         self.spn_scale.setValue(4)
         self.spn_tile.setValue(128)
         self.model_path.setText("src/models/RealESRNET_x4plus.pth")
+
+    def accept(self):
+        self.modified.enabled_thumbnails = self.chk_thumbnails.isChecked()
+        self.modified.enabled_upscale = self.chk_upscale.isChecked()
+        self.modified.save_to_json("config/settings.json")
+        super().accept()
