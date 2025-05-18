@@ -82,10 +82,9 @@ class ImageViewer(QMainWindow):
         setting_dialog_action.triggered.connect(self.open_setting_dialog)
         settings_menu.addAction(setting_dialog_action)
 
-        self.upscale_button = QPushButton("AI 업스케일")
-        self.upscale_button.clicked.connect(lambda: self.start_upscaling(self.current_image_path))
-        settings_menu.addSeparator()
-        settings_menu.addAction(self.upscale_button)
+        self.upscale_action  = QAction("AI 업스케일")
+        self.upscale_action.triggered.connect(lambda: self.start_upscaling(self.current_image_path))
+        settings_menu.addAction(self.upscale_action)
 
         view_menu = menu_bar.addMenu("보기")
         # 보기 크기 그룹 (단일 선택)
@@ -401,7 +400,8 @@ class ImageViewer(QMainWindow):
 
     def open_thumbnail_dialog(self):
         if hasattr(self, 'current_image_dir'):
-            dialog = ThumbnailDialog(self.current_image_dir, parent=self)
+            current_dir = os.path.dirname(self.current_image_path)
+            dialog = ThumbnailDialog(current_dir, parent=self)
             dialog.exec_()
         else:
             QMessageBox.warning(self, "경고", "이미지 폴더를 찾을 수 없습니다.")
@@ -472,7 +472,8 @@ class ImageViewer(QMainWindow):
         QMessageBox.information(self, "초기화", "기본 설정으로 초기화되었습니다.")
 
     def start_upscaling(self, image_path: str):
-        self.worker = UpscalingWorker(image_path)
+        model = "real-esrgan"  # 추후 UI로 선택 가능하게
+        self.worker = UpscalingWorker(image_path, model)
         self.worker.finished.connect(self.display_upscaled_image)
         self.worker.start()
 

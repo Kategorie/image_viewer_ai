@@ -1,26 +1,25 @@
 import json
 import os
 
-CONFIG_PATH = "config/viewer_config.json"
-DEFAULT_CONFIG_PATH = "config/default_config.json"
+DEFAULT_SETTINGS_PATH = "config/settings.json"
 
 class ConfigManager:
     def __init__(self):
         self.config = self.load_config()
 
     def load_config(self):
-        if os.path.exists(CONFIG_PATH):
-            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        if os.path.exists(DEFAULT_SETTINGS_PATH):
+            with open(DEFAULT_SETTINGS_PATH, "r", encoding="utf-8") as f:
                 return json.load(f)
         else:
             return self.load_default()
 
     def load_default(self):
-        with open(DEFAULT_CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(DEFAULT_SETTINGS_PATH, "r", encoding="utf-8") as f:
             return json.load(f)
 
     def save(self):
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        with open(DEFAULT_SETTINGS_PATH, "w", encoding="utf-8") as f:
             json.dump(self.config, f, indent=4, ensure_ascii=False)
 
     def reset_to_default(self):
