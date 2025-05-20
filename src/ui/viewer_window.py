@@ -4,6 +4,9 @@ import hashlib
 import numpy as np
 from PIL import Image
 import logging
+import time
+
+
 try:
     import imageio.v3 as iio
 except ImportError:
@@ -29,7 +32,7 @@ from ui.setting_dialog import SettingDialog
 from ui.thumbnail_dialog import ThumbnailDialog
 from utils.gif_player import GifPlayer
 from core.image_transform import apply_rotation, apply_flip, apply_scaling
-
+from core.async_workers import AsyncUpscaleWorker
 
 class ImageViewer(QMainWindow):
     def __init__(self):
@@ -60,6 +63,7 @@ class ImageViewer(QMainWindow):
         self.scale_factor = self.settings.scale_factor
         self.fit_to_window = self.settings.fit_to_window
         self.enabled_thumbnails = self.settings.enabled_thumbnails
+        self.upscale_worker = None
 
         # gif 플레이어 초기화
         self.gif_player = GifPlayer(self.image_label, self.scale_factor, self.fit_to_window)
@@ -324,42 +328,29 @@ class ImageViewer(QMainWindow):
             QMessageBox.warning(self, "오류", "업스케일러가 초기화되지 않았습니다.")
             return
 
-        try:
-            img = cv2.imread(path)
-            if img is None:
-                raise ValueError("이미지를 읽을 수 없습니다.")
+        cache_path = self.get_cached_path(path)
+        self.image_label.setText("업스케일링 중...")  # 로딩 표시
+        self.upscale_worker = AsyncUpscaleWorker(path, self.upscaler, cache_path)
+        self.upscale_worker.finished.connect(self.on_upscale_done)
+        self.upscale_worker.start()
 
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            pil_img = Image.fromarray(img)
+    def on_upscale_done(self, img):
+        if img is None:
+            QMessageBox.warning(self, "오류", "업스케일링 실패: 원본 이미지를 표시합니다.")
+            self.display_image(self.current_image_path)
+            return
 
-            cache_path = self.get_cached_path(path)
-            if os.path.exists(cache_path):
-                img = cv2.imread(cache_path)
-                img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-            else:
-                # ✅ AI 업스케일 시도
-                output = self.upscaler.upscale(pil_img)
-                result_np = np.array(output)
-                cv2.imwrite(cache_path, cv2.cvtColor(result_np, cv2.COLOR_RGB2BGR))
-                img = result_np
+        if not img.flags['C_CONTIGUOUS']:
+            img = np.ascontiguousarray(img)
+        h, w, ch = img.shape
+        bytes_per_line = ch * w
+        qimg = QImage(img.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimg)
 
-            # QPixmap 변환 및 표시
-            if not img.flags['C_CONTIGUOUS']:
-                img = np.ascontiguousarray(img)
-            h, w, ch = img.shape
-            bytes_per_line = ch * w
-            qimg = QImage(img.data, w, h, bytes_per_line, QImage.Format_RGB888)
-            pixmap = QPixmap.fromImage(qimg)
+        if self.fit_to_window:
+            scaled = apply_scaling(pixmap, self.scale_factor, self.image_label.size())
+        else:
+            scaled = apply_scaling(pixmap, self.scale_factor)
 
-            if self.fit_to_window:
-                scaled = apply_scaling(pixmap, self.scale_factor, self.image_label.size())
-            else:
-                scaled = apply_scaling(pixmap, self.scale_factor)
-
-            self.image_label.setPixmap(scaled)
-            self.update_title()
-
-        except Exception as e:
-            logging.warning(f"업스케일링 실패: {e}")
-            QMessageBox.warning(self, "업스케일링 오류", "이미지를 향상하는 중 문제가 발생하여 원본 이미지를 표시합니다.")
-            self.display_image(path)  # fallback to original
+        self.image_label.setPixmap(scaled)
+        self.update_title()

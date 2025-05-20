@@ -6,18 +6,15 @@ DEFAULT_SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "settings.json")
 
 @dataclass
 class AppSettings:
-    scale_factor: float = 1.0
+    upscale_enabled: bool = False
     fit_to_window: bool = True
-    enabled_thumbnails: bool = True
-    enabled_upscale: bool = False
-    page_mode: str = "single"
-    model_path: str = "src/models/RealESRNet_x4plus.pth"
+    scale_factor: float = 1.0
     tile: int = 128
     tile_pad: int = 4
     half: bool = False
 
     def __post_init__(self):
-        self._on_change_callback = None  # 안전한 콜백 처리
+        self._on_change_callback = None
 
     @classmethod
     def load_from_json(cls, path=DEFAULT_SETTINGS_PATH):
