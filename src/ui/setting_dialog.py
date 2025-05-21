@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
 )
 from config.settings_loader import AppSettings
 from dataclasses import replace
+
 class SettingDialog(QDialog):
     def __init__(self, settings: AppSettings, parent=None):
         super().__init__(parent)

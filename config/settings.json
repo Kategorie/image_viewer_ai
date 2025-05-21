@@ -1,11 +1,13 @@
 {
-    "fit_to_window": true,
+    "fit_to_window": false,
     "scale_factor": 1.0,
     "tile": 128,
     "tile_pad": 4,
+    "scale": 4.0,
     "half": false,
     "enabled_thumbnails": true,
-    "enabled_upscale": true,
+    "enabled_upscale": false,
     "page_mode": "single",
-    "model_path": "src/models/RealESRNet_x4plus.pth"
+    "model_path": "src/models/RealESRNet_x4plus.pth",
+    "sequential_upscale": false
 }

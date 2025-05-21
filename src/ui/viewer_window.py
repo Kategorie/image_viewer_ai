@@ -42,7 +42,10 @@ class ImageViewer(QMainWindow):
 
         self.settings = AppSettings.load_from_json("config/settings.json")
         self.settings.set_on_change_callback(self.refresh_image)
+        
         self.upscale_worker = None
+        self.upscale_queue = []
+        self.upscale_processing = False
 
         self.upscaler = create_upscaler("real-esrgan", self.settings)
 
@@ -98,7 +101,7 @@ class ImageViewer(QMainWindow):
         settings_menu.addAction(setting_dialog_action)
 
         self.upscale_action  = QAction("AI 업스케일", self)
-        self.upscale_action.triggered.connect(lambda: self.start_upscaling(self.current_image_path))
+        self.upscale_action.triggered.connect(lambda: self.request_upscale(self.current_image_path))
         settings_menu.addAction(self.upscale_action)
 
         view_menu = menu_bar.addMenu("보기")
@@ -233,7 +236,7 @@ class ImageViewer(QMainWindow):
 
         # ✅ 업스케일링은 메뉴에서 직접 클릭 시에만 진행
         if self.enabled_upscale:
-            self.start_upscaling(path)
+            self.request_upscale(path)
             return
 
         # QImage로 변환
@@ -361,3 +364,27 @@ class ImageViewer(QMainWindow):
 
         self.image_label.setPixmap(scaled)
         self.update_title()
+        self.upscale_processing = False
+        self._process_next_upscale()
+
+    def request_upscale(self, path):
+        if not self.settings.sequential_upscale:
+            self.start_upscaling(path)
+            return
+        
+        if path not in self.upscale_queue:
+            self.upscale_queue.append(path)
+
+        if not self.upscale_processing:
+            self._process_next_upscale()
+
+    def _process_next_upscale(self):
+        if not self.upscale_queue:
+            self.upscale_processing = False
+            return
+        self.upscale_processing = True
+        next_path = self.upscale_queue.pop(0)
+        self.start_upscaling(next_path)
+
+    def load_image(self, path):
+        self.open_image(path)
