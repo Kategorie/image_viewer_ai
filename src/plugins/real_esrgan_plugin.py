@@ -26,6 +26,8 @@ class RealESRGANUpscaler(BaseUpscaler):
 
         self.scale_factor = settings.scale_factor  # 💡 output 배율 조정용
 
+        print(f"[DEBUG] RealESRGAN 사용 tile={settings.tile}, tile_pad={settings.tile_pad}, half={settings.half}")
+
     def upscale(self, image: Image.Image) -> Image.Image:
         img_np = np.array(image)
         result_np, _ = self.upscaler.enhance(img_np, outscale=self.scale_factor)  # ✅ 적용

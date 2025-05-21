@@ -6,12 +6,17 @@ DEFAULT_SETTINGS_PATH = os.path.join(os.path.dirname(__file__), "settings.json")
 
 @dataclass
 class AppSettings:
-    upscale_enabled: bool = False
     fit_to_window: bool = True
     scale_factor: float = 1.0
-    tile: int = 128
-    tile_pad: int = 4
+    tile: int = 512
+    tile_pad: int = 12
+    scale: float = 4.0
     half: bool = False
+    enabled_thumbnails: bool = True
+    enabled_upscale: bool = False
+    page_mode: str = "single"
+    model_path: str = "src/models/RealESRNET_x4plus.pth"
+    sequential_upscale: bool = False
 
     def __post_init__(self):
         self._on_change_callback = None
@@ -24,11 +29,7 @@ class AppSettings:
         except Exception:
             return cls()
 
-        default = cls()
-        for field in fields(cls):
-            if field.name not in data:
-                data[field.name] = getattr(default, field.name)
-        return cls(**data)
+        return cls(**{f.name: data.get(f.name, getattr(cls(), f.name)) for f in fields(cls)})
 
     def get(self, key, default=None):
         return getattr(self, key, default)

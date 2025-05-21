@@ -42,6 +42,7 @@ class ImageViewer(QMainWindow):
 
         self.settings = AppSettings.load_from_json("config/settings.json")
         self.settings.set_on_change_callback(self.refresh_image)
+        self.upscale_worker = None
 
         self.upscaler = create_upscaler("real-esrgan", self.settings)
 
@@ -52,7 +53,7 @@ class ImageViewer(QMainWindow):
         self.rotation_angle = 0
         self.flip_horizontal = False
         self.flip_vertical = False
-        self.upscale_enabled = self.settings.enabled_upscale
+        self.enabled_upscale = self.settings.enabled_upscale
         self.current_image_path = None
         self.current_image_dir = None
         self.anim_timer = QTimer(self)
@@ -63,8 +64,7 @@ class ImageViewer(QMainWindow):
         self.scale_factor = self.settings.scale_factor
         self.fit_to_window = self.settings.fit_to_window
         self.enabled_thumbnails = self.settings.enabled_thumbnails
-        self.upscale_worker = None
-
+        
         # gif 플레이어 초기화
         self.gif_player = GifPlayer(self.image_label, self.scale_factor, self.fit_to_window)
 
@@ -139,8 +139,8 @@ class ImageViewer(QMainWindow):
         self.settings.save_to_json("config/settings.json")
 
     def toggle_upscale(self):
-        self.upscale_enabled = not self.upscale_enabled
-        self.settings.enabled_upscale = self.upscale_enabled
+        self.enabled_upscale = not self.enabled_upscale
+        self.settings.enabled_upscale = self.enabled_upscale
         self.settings.save_to_json("config/settings.json")
 
     def toggle_fit_to_window(self, checked):
@@ -170,7 +170,7 @@ class ImageViewer(QMainWindow):
             self.scale_factor = self.settings.scale_factor
             self.fit_to_window = self.settings.fit_to_window
             self.enabled_thumbnails = self.settings.enabled_thumbnails
-            self.upscale_enabled = self.settings.enabled_upscale
+            self.enabled_upscale = self.settings.enabled_upscale
             self.refresh_image()
 
     def set_page_mode(self, mode):
@@ -232,7 +232,7 @@ class ImageViewer(QMainWindow):
             img = apply_flip(img, self.flip_horizontal, self.flip_vertical)
 
         # ✅ 업스케일링은 메뉴에서 직접 클릭 시에만 진행
-        if self.upscale_enabled:
+        if self.enabled_upscale:
             self.start_upscaling(path)
             return
 
@@ -329,6 +329,13 @@ class ImageViewer(QMainWindow):
             return
 
         cache_path = self.get_cached_path(path)
+
+        if os.path.exists(cache_path):
+            img = cv2.imread(cache_path)
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            self.on_upscale_done(img)
+            return
+        
         self.image_label.setText("업스케일링 중...")  # 로딩 표시
         self.upscale_worker = AsyncUpscaleWorker(path, self.upscaler, cache_path)
         self.upscale_worker.finished.connect(self.on_upscale_done)
