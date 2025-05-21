@@ -38,6 +38,8 @@ class ThumbnailDialog(QDialog):
         scroll_area.setWidgetResizable(True)
         layout.addWidget(scroll_area)
 
+        self.list_widget.itemClicked.connect(self.on_item_clicked)
+
         # 파일 리스트
         list_widget = QListWidget()
         for file in sorted(os.listdir(self.image_dir)):
@@ -51,3 +53,17 @@ class ThumbnailDialog(QDialog):
         full_path = os.path.join(self.image_dir, filename)
         self.imageSelected.emit(full_path)
         self.close()
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        # 현재 썸네일 중 가장 큰 이미지 기준으로 높이 자동 조정
+        max_height = 0
+        for i in range(self.list_widget.count()):
+            item = self.list_widget.item(i)
+            if item and item.icon().availableSizes():
+                max_height = max(max_height, item.icon().availableSizes()[0].height())
+        self.list_widget.setFixedHeight(max(180, max_height + 40))
+    
+    def on_item_clicked(self, item):
+        path = item.data(Qt.UserRole)
+        self.imageSelected.emit(path)

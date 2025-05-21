@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 
 from PySide6.QtWidgets import (
-    QMainWindow, QLabel, QFileDialog, QMenuBar, QMenu, QMessageBox
+    QMainWindow, QLabel, QFileDialog, QMenuBar, QMenu, QMessageBox, QToolBar, QSizePolicy, QCheckBox
 )
 from PySide6.QtGui import QPixmap, QImage, QWheelEvent, QContextMenuEvent, QAction, QActionGroup
 from PySide6.QtCore import Qt, QTimer
@@ -50,6 +50,8 @@ class ImageViewer(QMainWindow):
         self.upscaler = create_upscaler("real-esrgan", self.settings)
 
         self.image_label = QLabel("이미지를 불러오세요", self)
+        self.image_label.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Ignored)
+        self.image_label.setScaledContents(True)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.setCentralWidget(self.image_label)
 
@@ -81,6 +83,16 @@ class ImageViewer(QMainWindow):
     def init_menu_bar(self):
         menu_bar = QMenuBar(self)
         self.setMenuBar(menu_bar)
+
+        # 툴바에 체크박스 추가
+        auto_hide_toolbar = QToolBar()
+        auto_hide_toolbar.setMovable(False)
+        auto_hide_checkbox = QCheckBox("UI 자동 숨김")
+        auto_hide_checkbox.setChecked(False)
+        auto_hide_checkbox.toggled.connect(self.toggle_ui_visibility)
+        auto_hide_toolbar.addWidget(auto_hide_checkbox)
+        self.addToolBar(Qt.TopToolBarArea, auto_hide_toolbar)
+    
 
         file_menu = menu_bar.addMenu("파일")
         open_action = QAction("이미지/압축 열기", self)
@@ -137,6 +149,9 @@ class ImageViewer(QMainWindow):
         view_menu.addAction(double_page_action)
 
     def toggle_thumbnails(self, checked):
+        if checked and self.current_image_path:
+            dialog = ThumbnailDialog(os.path.dirname(self.current_image_path), parent=self)
+            dialog.exec()
         self.enabled_thumbnails = checked
         self.settings.enabled_thumbnails = checked
         self.settings.save_to_json("config/settings.json")
@@ -206,6 +221,7 @@ class ImageViewer(QMainWindow):
             self.image_list.insert(0, path)
             self.current_index = 0
 
+        self.current_index = max(0, min(self.current_index, len(self.image_list) - 1))
         self.current_image_path = path
         self.display_image(path)
 
@@ -220,6 +236,7 @@ class ImageViewer(QMainWindow):
         if ext == ".gif":
             if self.gif_player.load(path):
                 self.gif_player.start()
+            self.update_title()
             return
 
         img = cv2.imread(path)
@@ -228,6 +245,19 @@ class ImageViewer(QMainWindow):
             return
 
         img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # 두 장 보기 조건: 페이지 모드 + 너비 제한
+        if self.settings.page_mode == "double" and img.shape[1] < 1200:
+            if self.current_index + 1 < len(self.image_list):
+                next_path = self.image_list[self.current_index + 1]
+                next_img = cv2.imread(next_path)
+                if next_img is not None:
+                    next_img = cv2.cvtColor(next_img, cv2.COLOR_BGR2RGB)
+                    if next_img.shape[0] != img.shape[0]:
+                        next_img = cv2.resize(next_img, (int(next_img.shape[1] * (img.shape[0] / next_img.shape[0])), img.shape[0]))
+                    img = np.concatenate((img, next_img), axis=1)
+                    self.setWindowTitle(self.windowTitle() + " [2장 보기]")
+
 
         # 회전 및 반전
         if self.rotation_angle != 0 or self.flip_horizontal or self.flip_vertical:
@@ -281,6 +311,9 @@ class ImageViewer(QMainWindow):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        if not hasattr(self, "list_widget") or self.list_widget is None:
+            return
+        
         if self.gif_player and self.gif_frames:
             self.gif_player.fit_to_window = self.fit_to_window
             self.gif_player.scale_factor = self.scale_factor
@@ -289,19 +322,22 @@ class ImageViewer(QMainWindow):
             self.refresh_image()
 
     def load_next_image(self):
-        if self.current_index + 1 < len(self.image_list):
-            self.current_index += 1
+        step = 2 if self.settings.page_mode == "double" else 1
+        if self.current_index + step < len(self.image_list):
+            self.current_index += step
             self.open_image(self.image_list[self.current_index])
 
     def load_previous_image(self):
-        if self.current_index > 0:
-            self.current_index -= 1
+        step = 2 if self.settings.page_mode == "double" else 1
+        if self.current_index - step >= 0:
+            self.current_index -= step
             self.open_image(self.image_list[self.current_index])
 
     def open_thumbnail_dialog(self):
         if self.current_image_path:
             current_dir = os.path.dirname(self.current_image_path)
             dialog = ThumbnailDialog(current_dir, parent=self)
+            dialog.imageSelected.connect(self.show_thumbnail)
             dialog.exec_()
         else:
             QMessageBox.warning(self, "경고", "이미지 폴더를 찾을 수 없습니다.")
@@ -336,6 +372,19 @@ class ImageViewer(QMainWindow):
         if os.path.exists(cache_path):
             img = cv2.imread(cache_path)
             img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        # 두 장 보기 조건: 페이지 모드 + 너비 제한
+        if self.settings.page_mode == "double" and img.shape[1] < 1200:
+            if self.current_index + 1 < len(self.image_list):
+                next_path = self.image_list[self.current_index + 1]
+                next_img = cv2.imread(next_path)
+                if next_img is not None:
+                    next_img = cv2.cvtColor(next_img, cv2.COLOR_BGR2RGB)
+                    if next_img.shape[0] != img.shape[0]:
+                        next_img = cv2.resize(next_img, (int(next_img.shape[1] * (img.shape[0] / next_img.shape[0])), img.shape[0]))
+                    img = np.concatenate((img, next_img), axis=1)
+                    self.setWindowTitle(self.windowTitle() + " [2장 보기]")
+
             self.on_upscale_done(img)
             return
         
@@ -388,3 +437,85 @@ class ImageViewer(QMainWindow):
 
     def load_image(self, path):
         self.open_image(path)
+
+    def toggle_ui_visibility(self, checked):
+        self.auto_ui_hidden = checked
+        self.menuBar().setVisible(not checked)
+        self.setWindowFlag(Qt.FramelessWindowHint, checked)
+        self.setMinimumSize(200, 150)
+        self.show()
+        self.refresh_image()
+
+    def mouseMoveEvent(self, event):
+        if getattr(self, 'auto_ui_hidden', False):
+            if event.pos().y() < 10:
+                self.menuBar().setVisible(True)
+            else:
+                self.menuBar().setVisible(False)
+        super().mouseMoveEvent(event)
+
+    def closeEvent(self, event): 
+        # 윈도우가 닫히기 직전에 호출되는 이벤트 핸들러
+        # GIF 재생 중일 경우 self.gif_player.stop()으로 재생 정지 처리
+        if self.gif_player:
+            self.gif_player.stop()
+        event.accept()
+
+    def showEvent(self, event):
+        # 윈도우가 처음 열리거나 .show()로 다시 표시될 때 호출됨
+        # GIF 플레이어 관련 정보를 다시 적용 후 프레임 갱신 (update_frame())
+        super().showEvent(event)
+        if hasattr(self, "gif_player") and self.gif_player:
+            self.gif_player.fit_to_window = self.fit_to_window
+            self.gif_player.scale_factor = self.scale_factor
+            self.gif_player.update_frame()
+
+    def hideEvent(self, event):
+        super().hideEvent(event)
+        if self.gif_player:
+            self.gif_player.stop()
+
+    def show_thumbnail(self, path):
+        # 외부에서 경로를 받아 특정 이미지를 썸네일처럼 보여주는 용도
+        # 이미지 로드 후 image_label에 표시 (현재 사이즈에 맞춰 scaled())
+        if not os.path.exists(path):
+            QMessageBox.warning(self, "경고", "썸네일을 찾을 수 없습니다.")
+            return
+
+        img = cv2.imread(path)
+        if img is None:
+            QMessageBox.warning(self, "경고", "썸네일을 열 수 없습니다.")
+            return
+
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        h, w, ch = img.shape
+        bytes_per_line = ch * w
+        qimg = QImage(img.data, w, h, bytes_per_line, QImage.Format_RGB888)
+        pixmap = QPixmap.fromImage(qimg)
+
+        self.image_label.setPixmap(pixmap.scaled(self.image_label.size(), Qt.KeepAspectRatio))
+
+    def extract_archive(self, path):
+        #.zip, .cbz 등 압축 파일의 내용을 임시 폴더에 풀고, 이미지 리스트로 갱신
+        # archive_tempdir를 사용해 중복 압축 해제 방지 및 기존 캐시 삭제
+        if not os.path.exists(path):
+            QMessageBox.warning(self, "경고", "압축 파일을 찾을 수 없습니다.")
+            return
+
+        if self.archive_tempdir:
+            extract_archive(self.archive_tempdir)
+            self.archive_tempdir = None
+        else:
+            self.archive_tempdir = extract_archive(path)
+            if not self.archive_tempdir:
+                QMessageBox.warning(self, "경고", "압축 해제에 실패했습니다.")
+                return
+
+        self.image_list = sorted([
+            os.path.join(self.archive_tempdir, f) for f in os.listdir(self.archive_tempdir)
+            if is_image_file(f)
+        ])
+        self.current_index = 0
+        self.open_image(self.image_list[self.current_index])
+
+    

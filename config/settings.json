@@ -7,7 +7,7 @@
     "half": false,
     "enabled_thumbnails": true,
     "enabled_upscale": false,
-    "page_mode": "single",
+    "page_mode": "double",
     "model_path": "src/models/RealESRNet_x4plus.pth",
     "sequential_upscale": false
 }
