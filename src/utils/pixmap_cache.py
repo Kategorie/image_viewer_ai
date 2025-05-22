@@ -30,3 +30,6 @@ class QPixmapLRUCache:
             self.cache.popitem(last=False)  # 가장 오래된 항목 제거
 
         return pixmap
+    
+    def clear(self):
+        self.cache.clear()
